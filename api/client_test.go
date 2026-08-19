@@ -279,10 +279,14 @@ func TestDoRefusesCrossOriginRedirectAsConfig(t *testing.T) {
 
 func TestConcurrentGrantsCoalesce(t *testing.T) {
 	var grants atomic.Int64
+	release := make(chan struct{})
+	grantStarted := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/oauth2/token" {
-			grants.Add(1)
-			time.Sleep(20 * time.Millisecond) // widen the window for peers to coalesce
+			if grants.Add(1) == 1 {
+				close(grantStarted)
+				<-release
+			}
 			fmt.Fprint(w, grantJSON("test-token"))
 			return
 		}
@@ -290,22 +294,33 @@ func TestConcurrentGrantsCoalesce(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var wg sync.WaitGroup
-	for range 20 {
-		wg.Add(1)
+	const callers = 20
+	got := make(chan error, callers)
+	do := func() {
+		resp, err := c.Do(context.Background(), Request{Method: "GET", Path: "/x"})
+		if err == nil {
+			err = resp.Body.Close()
+		}
+		got <- err
+	}
+	go do()
+	<-grantStarted
+	for range callers - 1 {
 		go func() {
-			defer wg.Done()
-			resp, err := c.Do(context.Background(), Request{Method: "GET", Path: "/x"})
-			if err == nil {
-				resp.Body.Close()
-			}
+			do()
 		}()
 	}
-	wg.Wait()
+	waitForGrantWaiters(t, c, callers-1)
+	close(release)
+	for range callers {
+		if err := <-got; err != nil {
+			t.Errorf("Do: %v", err)
+		}
+	}
 	if g := grants.Load(); g != 1 {
 		t.Errorf("token grants: got %d, want 1 (concurrent callers must coalesce onto one grant)", g)
 	}
@@ -335,7 +350,7 @@ func TestConcurrent401sCoalesceReauth(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +439,7 @@ func TestWaiterDoesNotInheritLeaderContextCancel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +488,7 @@ func TestConcurrentWaitersBoundGrantsOnLeaderCancel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,10 +528,14 @@ func TestConcurrentWaitersBoundGrantsOnLeaderCancel(t *testing.T) {
 // repeated failures race the account toward a lockout.
 func TestConcurrentFailedGrantsCoalesce(t *testing.T) {
 	var grants atomic.Int64
+	release := make(chan struct{})
+	grantStarted := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/oauth2/token" {
-			grants.Add(1)
-			time.Sleep(20 * time.Millisecond)
+			if grants.Add(1) == 1 {
+				close(grantStarted)
+				<-release
+			}
 			w.WriteHeader(http.StatusUnauthorized) // credential rejected
 			return
 		}
@@ -524,24 +543,30 @@ func TestConcurrentFailedGrantsCoalesce(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "wrong"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "wrong", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var wg sync.WaitGroup
-	var denied atomic.Int64
-	for range 20 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, err := c.Token(context.Background()); errors.Is(err, ErrAccessDenied) {
-				denied.Add(1)
-			}
-		}()
+	const callers = 20
+	got := make(chan error, callers)
+	go func() { _, err := c.Token(context.Background()); got <- err }()
+	<-grantStarted
+	for range callers - 1 {
+		go func() { _, err := c.Token(context.Background()); got <- err }()
 	}
-	wg.Wait()
-	if denied.Load() != 20 {
-		t.Errorf("all 20 callers should see the denial, got %d", denied.Load())
+	waitForGrantWaiters(t, c, callers-1)
+	close(release)
+
+	var denied atomic.Int64
+	for range callers {
+		if err := <-got; errors.Is(err, ErrAccessDenied) {
+			denied.Add(1)
+		} else {
+			t.Errorf("Token: got %v, want ErrAccessDenied", err)
+		}
+	}
+	if denied.Load() != callers {
+		t.Errorf("all %d callers should see the denial, got %d", callers, denied.Load())
 	}
 	if g := grants.Load(); g != 1 {
 		t.Errorf("grants: got %d, want 1 (a failed grant must be shared, not re-attempted per caller)", g)
@@ -555,9 +580,11 @@ func TestConcurrentFailedGrantsCoalesce(t *testing.T) {
 func TestConcurrentTransientGrantsShareNotStorm(t *testing.T) {
 	var grants atomic.Int64
 	proceed := make(chan struct{})
+	grantStarted := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/oauth2/token" {
 			if grants.Add(1) == 1 {
+				close(grantStarted)
 				<-proceed // hold the leader's grant until the waiters have parked
 			}
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -567,22 +594,22 @@ func TestConcurrentTransientGrantsShareNotStorm(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	leaderDone := make(chan error, 1)
 	go func() { _, e := c.Token(context.Background()); leaderDone <- e }()
-	time.Sleep(30 * time.Millisecond) // let the leader claim the grant and block
+	<-grantStarted
 
 	const waiters = 20
 	got := make(chan error, waiters)
 	for range waiters {
 		go func() { _, e := c.Token(context.Background()); got <- e }()
 	}
-	time.Sleep(30 * time.Millisecond) // let every waiter coalesce onto the leader
-	close(proceed)                    // the leader's grant now fails with 503
+	waitForGrantWaiters(t, c, waiters)
+	close(proceed) // the leader's grant now fails with 503
 
 	if e := <-leaderDone; !errors.Is(e, ErrTransport) {
 		t.Errorf("leader: got %v, want ErrTransport", e)
@@ -606,9 +633,12 @@ func TestConcurrentTransientGrantsShareNotStorm(t *testing.T) {
 func TestConcurrentEndpointTimeoutSharedNotStorm(t *testing.T) {
 	var grants atomic.Int64
 	release := make(chan struct{})
+	grantStarted := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/oauth2/token" {
-			grants.Add(1)
+			if grants.Add(1) == 1 {
+				close(grantStarted)
+			}
 			<-release // never answers within the client's per-request timeout
 			return
 		}
@@ -617,20 +647,21 @@ func TestConcurrentEndpointTimeoutSharedNotStorm(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1, Timeout: 250 * time.Millisecond})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1, Timeout: time.Second, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	leaderDone := make(chan error, 1)
 	go func() { _, e := c.Token(context.Background()); leaderDone <- e }() // healthy context
-	time.Sleep(25 * time.Millisecond)
+	<-grantStarted
 
 	const waiters = 15
 	got := make(chan error, waiters)
 	for range waiters {
 		go func() { _, e := c.Token(context.Background()); got <- e }()
 	}
+	waitForGrantWaiters(t, c, waiters)
 
 	if e := <-leaderDone; !errors.Is(e, ErrTimeout) {
 		t.Errorf("leader: got %v, want ErrTimeout", e)
@@ -871,8 +902,11 @@ func TestNewSetsDefaultOOBPollInterval(t *testing.T) {
 // rather than blocking on a lock that ignores the deadline.
 func TestAccessTokenWaiterHonorsContext(t *testing.T) {
 	release := make(chan struct{})
+	grantStarted := make(chan struct{})
+	var startOnce sync.Once
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/oauth2/token" {
+			startOnce.Do(func() { close(grantStarted) })
 			<-release // hold the grant open
 			fmt.Fprint(w, grantJSON("test-token"))
 			return
@@ -882,12 +916,12 @@ func TestAccessTokenWaiterHonorsContext(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	go c.Token(context.Background()) // becomes the granter, blocks on release
-	time.Sleep(20 * time.Millisecond)
+	<-grantStarted
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()

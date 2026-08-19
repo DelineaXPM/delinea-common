@@ -52,7 +52,7 @@ func ssServer(t *testing.T, secretsHandler http.HandlerFunc) *httptest.Server {
 
 func ssClient(t *testing.T, url string) *Client {
 	t.Helper()
-	c, err := New(Config{URL: url, Username: "u", Password: "p"})
+	c, err := New(Config{URL: url, Username: "u", Password: "p", Cache: api.NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestFetcherRetriesBodyReadFailure(t *testing.T) {
 		}
 		fmt.Fprint(w, `{"id":5,"items":[{"fieldName":"Password","slug":"password","itemValue":"pw"}]}`)
 	})
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 3,
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: api.NewMemoryCache(), Retries: 3,
 		Backoff: func(int) time.Duration { return 0 }})
 	if err != nil {
 		t.Fatal(err)
@@ -238,7 +238,7 @@ func TestFetcherNonJSONResponseIsPermanent(t *testing.T) {
 		calls++
 		fmt.Fprint(w, "<html>captive portal</html>")
 	})
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 3})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: api.NewMemoryCache(), Retries: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +475,7 @@ func TestFetcherRedactsReflectedBearerToken(t *testing.T) {
 		fmt.Fprint(w, "request used "+token)
 	}))
 	defer srv.Close()
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: api.NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,6 +526,7 @@ func TestFetcherPlatformRoutesToVault(t *testing.T) {
 		Target:            api.TargetPlatform,
 		Username:          "cid",
 		Password:          "cs",
+		Cache:             api.NewMemoryCache(),
 		CACert:            append(certPEM(platformSrv), certPEM(vaultSrv)...),
 		AllowedVaultHosts: []string{hostOf(t, vaultSrv.URL)},
 	})
