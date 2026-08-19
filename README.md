@@ -6,7 +6,7 @@ and the Delinea Platform.
 | Package | Purpose |
 |---|---|
 | [`api`](api/) | OAuth2 grants, interactive Platform login, backend probing, vault discovery and trust validation, token caching, retries, and authenticated raw REST requests. |
-| [`secrets`](secrets/) | Resolves secret fields by ID or path, including file attachments, into ordered name/value pairs. |
+| [`secrets`](secrets/) | Resolves secret fields by ID or path, including file attachments, into ordered name/value pairs with unique names. |
 | [`secrets/ciout`](secrets/ciout/) | Validated and escaped shell, GitHub Actions, and Azure Pipelines delivery formats. |
 | [`secrets/retrievejson`](secrets/retrievejson/) | Strict parser for the shared CI retrieve-secrets JSON schema. |
 | [`secrets/secretstest`](secrets/secretstest/) | Map-backed `secrets.Fetcher` for tests in consuming modules. |

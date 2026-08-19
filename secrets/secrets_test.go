@@ -244,6 +244,50 @@ func TestResolveValidatesWholeBatchBeforeFetcher(t *testing.T) {
 	}
 }
 
+func TestResolveRejectsDuplicateDirectNamesBeforeFetcher(t *testing.T) {
+	f := newFake(map[int]*Secret{9: {Fields: []SecretField{field("password", "p")}}})
+	_, err := NewWithFetcher(f).Resolve(context.Background(), []Mapping{
+		{EnvName: "DUPLICATE", SecretID: 9, Field: "password"},
+		{EnvName: "DUPLICATE", SecretID: 9, Field: "password"},
+	})
+	if err == nil || !strings.Contains(err.Error(), `variable "DUPLICATE" is defined more than once`) {
+		t.Fatalf("got %v, want duplicate-name refusal", err)
+	}
+	if len(f.calls) != 0 {
+		t.Errorf("duplicate direct names reached the fetcher: %v", f.calls)
+	}
+}
+
+func TestResolveRejectsExpandedNameCollisions(t *testing.T) {
+	t.Run("within one expansion", func(t *testing.T) {
+		f := newFake(map[int]*Secret{9: {Fields: []SecretField{
+			field("api-key", "first"),
+			field("api_key", "second"),
+		}}})
+		_, err := NewWithFetcher(f).Resolve(context.Background(), []Mapping{{Prefix: "APP_", SecretID: 9, Expand: true}})
+		if err == nil || !strings.Contains(err.Error(), `variable "APP_API_KEY" is defined more than once`) {
+			t.Fatalf("got %v, want normalized-slug collision refusal", err)
+		}
+	})
+
+	t.Run("across mappings", func(t *testing.T) {
+		f := newFake(map[int]*Secret{
+			9:  {Fields: []SecretField{field("api-key", "expanded")}},
+			10: {Fields: []SecretField{field("password", "direct")}},
+		})
+		_, err := NewWithFetcher(f).Resolve(context.Background(), []Mapping{
+			{Prefix: "APP_", SecretID: 9, Expand: true},
+			{EnvName: "APP_API_KEY", SecretID: 10, Field: "password"},
+		})
+		if err == nil || !strings.Contains(err.Error(), `variable "APP_API_KEY" is defined more than once`) {
+			t.Fatalf("got %v, want expansion/direct collision refusal", err)
+		}
+		if f.calls["#10"] != 0 {
+			t.Errorf("colliding direct mapping was fetched %d times, want 0", f.calls["#10"])
+		}
+	})
+}
+
 func TestCloseIdleConnectionsDelegatesWhenFetcherSupportsIt(t *testing.T) {
 	f := newFake(nil)
 	c := NewWithFetcher(f)
@@ -529,6 +573,42 @@ func TestVerifyReportsEveryOutcome(t *testing.T) {
 		if !reflect.DeepEqual(r.Mapping, mappings[i]) {
 			t.Errorf("result %d: mapping got %+v, want %+v", i, r.Mapping, mappings[i])
 		}
+	}
+}
+
+func TestVerifyReportsDuplicateNamesPerMapping(t *testing.T) {
+	f := newFake(map[int]*Secret{
+		1: {Fields: []SecretField{field("password", "p")}},
+		2: {Fields: []SecretField{field("api-key", "first"), field("api_key", "second")}},
+	})
+	got, err := NewWithFetcher(f).Verify(context.Background(), []Mapping{
+		{EnvName: "A", SecretID: 1, Field: "password"},
+		{EnvName: "A", SecretID: 1, Field: "password"},
+		{Prefix: "P_", SecretID: 2, Expand: true},
+		{EnvName: "P_API_KEY", SecretID: 1, Field: "password"},
+	})
+	if err != nil {
+		t.Fatalf("got whole-call error %v", err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("got %d results, want 4", len(got))
+	}
+	if got[0].Err != nil || !reflect.DeepEqual(got[0].Fields, []Field{{Name: "A", Bytes: 1}}) {
+		t.Errorf("first mapping: got %+v, want one successful A field", got[0])
+	}
+	for i, name := range map[int]string{1: "A", 2: "P_API_KEY"} {
+		if got[i].Err == nil || !strings.Contains(got[i].Err.Error(), `variable "`+name+`" is defined more than once`) {
+			t.Errorf("result %d: got %+v, want duplicate-name error for %s", i, got[i], name)
+		}
+		if got[i].Fields != nil {
+			t.Errorf("result %d exposed partial fields after a collision: %+v", i, got[i].Fields)
+		}
+	}
+	if got[3].Err != nil || !reflect.DeepEqual(got[3].Fields, []Field{{Name: "P_API_KEY", Bytes: 1}}) {
+		t.Errorf("mapping after failed expansion: got %+v, want one successful P_API_KEY field", got[3])
+	}
+	if f.calls["#1"] != 1 {
+		t.Errorf("duplicate direct mapping caused %d fetches, want 1", f.calls["#1"])
 	}
 }
 
