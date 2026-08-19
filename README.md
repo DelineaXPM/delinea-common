@@ -21,7 +21,7 @@ per credential, and reuse it. Clients are safe for concurrent use and share an
 in-memory token cache by default.
 
 ```go
-baseURL, err := api.NormalizeURL(rawURL)
+baseURL, err := api.NormalizeURL(rawURL, false)
 if err != nil {
 	log.Fatal(err)
 }

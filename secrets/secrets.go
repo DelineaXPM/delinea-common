@@ -191,12 +191,14 @@ type Client struct {
 
 // String and GoString keep a logged Client (%+v) from leaking the credentials
 // its underlying api.Client holds: without them fmt would format the unexported
-// fetcher reflectively and reach the Config's secret fields. Delegation goes
-// through the Stringer interface (never reflection) so a fetcher that is not a
-// Stringer contributes nothing to leak.
+// fetcher reflectively and reach the Config's secret fields. Only the
+// package-owned fetcher may contribute its already-redacted identity. An
+// arbitrary Fetcher's String method is not a security boundary and is omitted.
 func (c *Client) String() string {
-	if s, ok := c.f.(fmt.Stringer); ok {
-		return "secrets.Client(" + s.String() + ")"
+	if c != nil {
+		if f, ok := c.f.(*apiFetcher); ok {
+			return "secrets.Client(" + f.String() + ")"
+		}
 	}
 	return "secrets.Client"
 }

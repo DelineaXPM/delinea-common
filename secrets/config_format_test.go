@@ -75,6 +75,31 @@ func TestClientFormattingRedactsCredentials(t *testing.T) {
 	}
 }
 
+type leakyFormattingFetcher string
+
+func (f leakyFormattingFetcher) String() string { return string(f) }
+func (leakyFormattingFetcher) Secret(context.Context, int) (*Secret, error) {
+	return &Secret{}, nil
+}
+func (leakyFormattingFetcher) SecretByPath(context.Context, string) (*Secret, error) {
+	return &Secret{}, nil
+}
+
+// A caller-supplied Fetcher's String method has no redaction contract. Client
+// formatting must therefore treat it as opaque rather than trusting its text.
+func TestClientFormattingOmitsCustomFetcherString(t *testing.T) {
+	const secret = "custom-fetcher-secret"
+	c := NewWithFetcher(leakyFormattingFetcher(secret))
+	for _, out := range []string{fmt.Sprintf("%v", c), fmt.Sprintf("%+v", c), fmt.Sprintf("%#v", c)} {
+		if strings.Contains(out, secret) {
+			t.Errorf("secrets.Client leaked its custom Fetcher: %s", out)
+		}
+		if out != "secrets.Client" {
+			t.Errorf("custom Fetcher identity must be opaque: %s", out)
+		}
+	}
+}
+
 func TestConfigJSONDecodeStrict(t *testing.T) {
 	dec := json.NewDecoder(strings.NewReader(
 		`{"URL":"https://vault.example.com","Username":"svc","Password":"pw-live","Retries":2}`))

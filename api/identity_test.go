@@ -46,6 +46,11 @@ type alwaysPollPrompter struct{}
 func (alwaysPollPrompter) ChooseMechanism([]Mechanism) (int, error) { return 0, nil }
 func (alwaysPollPrompter) ReadAnswer(string) (string, error)        { return "", nil }
 
+type failingPrompter struct{ err error }
+
+func (p failingPrompter) ChooseMechanism([]Mechanism) (int, error) { return 0, p.err }
+func (p failingPrompter) ReadAnswer(string) (string, error)        { return "mfa-answer", p.err }
+
 type advanceReq struct {
 	SessionID   string `json:"SessionId"`
 	TenantID    string `json:"TenantId"`
@@ -92,6 +97,41 @@ func loginClient(t *testing.T, url string) *Client {
 	}
 	c.oobPollInterval = 0 // poll without real delay in tests
 	return c
+}
+
+func TestPrompterErrorsSuppressDetailsAndPreserveIdentity(t *testing.T) {
+	sentinel := errors.New("callback sentinel")
+	callbackErr := fmt.Errorf("failed with mfa-answer: %w", sentinel)
+	c, err := New(Config{
+		URL:      "https://tenant.secureplatform.io",
+		Target:   TargetPlatform,
+		Username: "cloudadmin@tenant",
+		Password: "password",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	answers := []string{}
+	p := &credentialRedactingPrompter{
+		client: c, prompt: failingPrompter{err: callbackErr}, sensitive: &answers,
+	}
+
+	_, chooseErr := p.ChooseMechanism([]Mechanism{{Name: "EMAIL"}, {Name: "OTP"}})
+	_, answerErr := p.ReadAnswer("enter the code")
+	for name, got := range map[string]error{"choose": chooseErr, "answer": answerErr} {
+		if !errors.Is(got, sentinel) {
+			t.Errorf("%s error lost callback identity: %v", name, got)
+		}
+		if strings.Contains(got.Error(), "mfa-answer") || strings.Contains(got.Error(), "callback sentinel") {
+			t.Errorf("%s error exposed callback details: %v", name, got)
+		}
+		if !strings.Contains(got.Error(), "details suppressed") {
+			t.Errorf("%s error does not explain suppression: %v", name, got)
+		}
+	}
+	if len(answers) != 0 {
+		t.Errorf("failed answer was retained as sensitive state: %q", answers)
+	}
 }
 
 func TestInteractiveLoginPasswordOnly(t *testing.T) {

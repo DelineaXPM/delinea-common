@@ -2,8 +2,8 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -34,7 +34,13 @@ func ExampleClient_Do() {
 	if resp.StatusCode != http.StatusOK {
 		log.Fatalf("secret fetch failed: %s", resp.Status)
 	}
-	io.Copy(os.Stdout, resp.Body)
+	var secret struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&secret); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("fetched secret", secret.ID)
 }
 
 // A Delinea Platform call routed to the tenant's Secret Server vault: the
@@ -59,7 +65,16 @@ func ExampleClient_Do_platformVault() {
 		log.Fatal(err)
 	}
 	defer resp.Body.Close()
-	io.Copy(os.Stdout, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("secret fetch failed: %s", resp.Status)
+	}
+	var secret struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&secret); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("fetched secret", secret.ID)
 }
 
 // A shared in-memory cache lets many short-lived Clients reuse one token
@@ -83,6 +98,7 @@ func ExampleNewMemoryCache() {
 			log.Fatal(err)
 		}
 		resp.Body.Close()
+		client.CloseIdleConnections()
 		fmt.Println(path, resp.Status)
 	}
 }

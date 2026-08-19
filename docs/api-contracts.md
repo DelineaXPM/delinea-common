@@ -34,7 +34,9 @@ Responses are limited to 1 MiB and a successful response over that limit is
 rejected. Endpoint-controlled diagnostics redact the submitted password,
 client secret, configured bearer token, and current granted token before they
 are returned to the caller. Identity prompts and summaries also redact prior
-MFA answers.
+MFA answers. Errors returned by an interactive `Prompter` preserve their
+identity for `errors.Is` and `errors.As`, but their caller-owned diagnostic text
+is suppressed because it may contain an MFA answer or another credential.
 
 ## Pre-obtained-token validation — `api/auth.go`
 

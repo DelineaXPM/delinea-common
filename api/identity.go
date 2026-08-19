@@ -43,7 +43,9 @@ type challenge struct {
 }
 
 // Prompter supplies the interactive answers InteractiveLogin cannot derive
-// from configuration.
+// from configuration. Callback error identity remains available through
+// errors.Is and errors.As, but callback error text is treated as opaque and is
+// not included in the error returned by InteractiveLogin.
 type Prompter interface {
 	// ChooseMechanism picks one of mechs (always two or more) and returns
 	// its index.
@@ -185,7 +187,11 @@ func (p *credentialRedactingPrompter) ChooseMechanism(mechs []Mechanism) (int, e
 		safe[i].PromptSelectMech = redact(safe[i].PromptSelectMech, answers...)
 		safe[i].PromptMechChosen = redact(safe[i].PromptMechChosen, answers...)
 	}
-	return p.prompt.ChooseMechanism(safe)
+	idx, err := p.prompt.ChooseMechanism(safe)
+	if err != nil {
+		return 0, &promptError{operation: "choosing an authentication mechanism", err: err}
+	}
+	return idx, nil
 }
 
 // ReadAnswer redacts the prompt without reshaping it: a legitimate multi-line
@@ -194,11 +200,24 @@ func (p *credentialRedactingPrompter) ChooseMechanism(mechs []Mechanism) (int, e
 // and terminal escape sequences still never do.
 func (p *credentialRedactingPrompter) ReadAnswer(prompt string) (string, error) {
 	answer, err := p.prompt.ReadAnswer(p.client.redactText(prompt, p.answers()...))
-	if err == nil && answer != "" {
+	if err != nil {
+		return "", &promptError{operation: "reading an authentication answer", err: err}
+	}
+	if answer != "" {
 		*p.sensitive = append(*p.sensitive, answer)
 	}
-	return answer, err
+	return answer, nil
 }
+
+// promptError preserves callback error identity without trusting caller-owned
+// diagnostic text, which may contain the answer or other credentials.
+type promptError struct {
+	operation string
+	err       error
+}
+
+func (e *promptError) Error() string { return e.operation + " failed (details suppressed)" }
+func (e *promptError) Unwrap() error { return e.err }
 
 // answers is the MFA answers submitted so far, the extra values every
 // identity-path redaction includes.
