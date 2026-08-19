@@ -113,6 +113,65 @@ func TestProbeBackendReachableButUnhealthyIsNotAnError(t *testing.T) {
 	}
 }
 
+func TestProbeBackendPreservesCancellationAfterReachableResponse(t *testing.T) {
+	tests := []struct {
+		name    string
+		context func() (context.Context, context.CancelFunc)
+		want    error
+	}{
+		{
+			name: "cancel",
+			context: func() (context.Context, context.CancelFunc) {
+				return context.WithCancel(context.Background())
+			},
+			want: context.Canceled,
+		},
+		{
+			name: "deadline",
+			context: func() (context.Context, context.CancelFunc) {
+				return context.WithTimeout(context.Background(), 100*time.Millisecond)
+			},
+			want: context.DeadlineExceeded,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			platformProbeStarted := make(chan struct{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/healthcheck" {
+					http.NotFound(w, r)
+					return
+				}
+				close(platformProbeStarted)
+				<-r.Context().Done()
+			}))
+			t.Cleanup(srv.Close)
+
+			ctx, cancel := tt.context()
+			defer cancel()
+			result := make(chan error, 1)
+			go func() {
+				_, err := ProbeBackend(ctx, Config{URL: srv.URL})
+				result <- err
+			}()
+			<-platformProbeStarted
+			if errors.Is(tt.want, context.Canceled) {
+				cancel()
+			}
+			err := <-result
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("got %v, want errors.Is %v", err, tt.want)
+			}
+			if tt.want == context.Canceled && !errors.Is(err, ErrTransport) {
+				t.Fatalf("got %v, want ErrTransport", err)
+			}
+			if tt.want == context.DeadlineExceeded && !errors.Is(err, ErrTimeout) {
+				t.Fatalf("got %v, want ErrTimeout", err)
+			}
+		})
+	}
+}
+
 // A non-2xx response whose body happens to contain "Healthy" (an error page,
 // a WAF block) must not be read as a healthy backend.
 func TestProbeBackendIgnoresUnhealthyStatus(t *testing.T) {

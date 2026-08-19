@@ -57,6 +57,11 @@ func ProbeBackend(ctx context.Context, cfg Config) (Backend, error) {
 	reachable := false
 	for _, p := range probes {
 		ok, err := probeHealthy(ctx, client, base+"/"+p.path, cfg.Header)
+		if err != nil && ctx.Err() != nil {
+			// A response from an earlier endpoint proves reachability, but it must
+			// not turn cancellation of a later probe into BackendUnknown, nil.
+			return BackendUnknown, classifyProbeTransport(ctx.Err(), cfg.Header, opaque)
+		}
 		switch {
 		case ok:
 			return p.backend, nil

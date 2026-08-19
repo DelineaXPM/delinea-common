@@ -34,7 +34,7 @@ func TestGrantSecretServerForm(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Domain: "d"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Domain: "d", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestAuthenticateGrantCredential(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Target: TargetSecretServer, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Target: TargetSecretServer, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +148,7 @@ func TestConcurrentAuthenticateCoalescesRejectedGrant(t *testing.T) {
 	var grants atomic.Int32
 	firstGrant := make(chan struct{})
 	release := make(chan struct{})
+	releaseGrant := releaseOnce(release)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if grants.Add(1) == 1 {
 			close(firstGrant)
@@ -156,8 +157,9 @@ func TestConcurrentAuthenticateCoalescesRejectedGrant(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer srv.Close()
+	defer releaseGrant()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "rejected", Retries: 1})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "rejected", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +180,7 @@ func TestConcurrentAuthenticateCoalescesRejectedGrant(t *testing.T) {
 	close(start)
 	<-firstGrant
 	waitForGrantWaiters(t, c, callers-1) // all but the leader park on the in-flight grant
-	close(release)
+	releaseGrant()
 	for range callers {
 		if err := <-errs; !errors.Is(err, ErrAccessDenied) {
 			t.Errorf("got %v, want ErrAccessDenied", err)
@@ -299,7 +301,7 @@ func TestGrantRetriesTransientStatus(t *testing.T) {
 	defer srv.Close()
 
 	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 3,
-		Backoff: func(int) time.Duration { return 0 }})
+		Backoff: func(int) time.Duration { return 0 }, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +328,7 @@ func TestGrantRetriesTransportFailure(t *testing.T) {
 	defer srv.Close()
 
 	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 3,
-		Backoff: func(int) time.Duration { return 0 }})
+		Backoff: func(int) time.Duration { return 0 }, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +349,7 @@ func TestGrantNeverRetriesAuthAnswer(t *testing.T) {
 	defer srv.Close()
 
 	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 3,
-		Backoff: func(int) time.Duration { return 0 }})
+		Backoff: func(int) time.Duration { return 0 }, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +430,7 @@ func TestGrantExhaustedTransientIsTransport(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,6 +451,7 @@ func TestGrantCarriesConfigHeader(t *testing.T) {
 	defer srv.Close()
 
 	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p",
+		Cache: NewMemoryCache(),
 		Header: http.Header{
 			"X-Gateway":     {"g"},
 			"Authorization": {"Bearer stray"},
@@ -480,7 +483,7 @@ func TestGrantSecretServerOmitsEmptyDomain(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +506,7 @@ func TestGrantPlatformForm(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, ClientID: "cid", ClientSecret: "cs"})
+	c, err := New(Config{URL: srv.URL, ClientID: "cid", ClientSecret: "cs", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -546,7 +549,7 @@ func TestGrantErrorClassification(t *testing.T) {
 			w.WriteHeader(tc.status)
 			fmt.Fprint(w, tc.body)
 		}))
-		c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1})
+		c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1, Cache: NewMemoryCache()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -573,7 +576,7 @@ func TestDiagnosticSnippetRedactsRotatedToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -659,7 +662,7 @@ func TestBufferedResponseFormattingDoesNotLeakToken(t *testing.T) {
 		fmt.Fprint(w, "ok")
 	}))
 	defer srv.Close()
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -718,7 +721,7 @@ func TestResponseDiagnosticSurvivesBodyRewrap(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -839,6 +842,7 @@ func TestGrantErrorRedactsSubmittedCredential(t *testing.T) {
 			}))
 			defer srv.Close()
 			tc.cfg.URL, tc.cfg.Retries = srv.URL, 1
+			tc.cfg.Cache = NewMemoryCache()
 			c, err := New(tc.cfg)
 			if err != nil {
 				t.Fatal(err)
@@ -860,7 +864,7 @@ func TestGrantErrorRedactsReflectedConfiguredHeader(t *testing.T) {
 	defer srv.Close()
 	c, err := New(Config{
 		URL: srv.URL, Username: "u", Password: "password-value", Retries: 1,
-		Header: http.Header{"X-Gateway-Key": {secret}},
+		Header: http.Header{"X-Gateway-Key": {secret}}, Cache: NewMemoryCache(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -879,7 +883,7 @@ func TestGrantRejectsOversizedResponse(t *testing.T) {
 		fmt.Fprint(w, "x")
 	}))
 	defer srv.Close()
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -894,7 +898,7 @@ func TestGrantRefusesRedirect(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -929,7 +933,7 @@ func TestGrantedTokenCanBeReusedAsConfiguredToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -950,7 +954,7 @@ func TestTokenMemoized(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -974,7 +978,7 @@ func TestTokenRefreshesAfterExpiry(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1018,7 +1022,7 @@ func TestDoReplaysReusedTokenOn401(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1056,7 +1060,7 @@ func TestDoDoesNotReplayPostWithReusedTokenOn401(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1103,7 +1107,7 @@ func TestDoDoesNotReplayReusedTokenOn403(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1139,7 +1143,7 @@ func TestDoDoesNotReplayFreshGrant(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}

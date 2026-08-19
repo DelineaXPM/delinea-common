@@ -39,12 +39,14 @@ func TestConcurrentColdClientsShareOneGrant(t *testing.T) {
 	const clients = 4
 	var grants atomic.Int32
 	release := make(chan struct{})
+	releaseGrant := releaseOnce(release)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		grants.Add(1)
 		<-release
 		fmt.Fprint(w, grantJSON("test-token"))
 	}))
 	defer srv.Close()
+	defer releaseGrant()
 
 	shared := NewMemoryCache()
 	built := make([]*Client, clients)
@@ -67,7 +69,7 @@ func TestConcurrentColdClientsShareOneGrant(t *testing.T) {
 		}()
 	}
 	waitForFlightWaiters(t, built[0], clients-1)
-	close(release)
+	releaseGrant()
 	wg.Wait()
 	if got := grants.Load(); got != 1 {
 		t.Errorf("grants: got %d, want 1 (concurrent cold clients must share one grant)", got)
@@ -81,6 +83,7 @@ func TestConcurrentColdClientsShareOneDenial(t *testing.T) {
 	const clients = 4
 	var grants atomic.Int32
 	release := make(chan struct{})
+	releaseGrant := releaseOnce(release)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		grants.Add(1)
 		<-release
@@ -88,6 +91,7 @@ func TestConcurrentColdClientsShareOneDenial(t *testing.T) {
 		fmt.Fprint(w, `{"error":"invalid_grant"}`)
 	}))
 	defer srv.Close()
+	defer releaseGrant()
 
 	shared := NewMemoryCache()
 	built := make([]*Client, clients)
@@ -106,7 +110,7 @@ func TestConcurrentColdClientsShareOneDenial(t *testing.T) {
 		}()
 	}
 	waitForFlightWaiters(t, built[0], clients-1)
-	close(release)
+	releaseGrant()
 	for range clients {
 		if err := <-errs; !errors.Is(err, ErrAccessDenied) {
 			t.Errorf("got %v, want ErrAccessDenied", err)
@@ -200,6 +204,7 @@ func TestIsolatedClientsDoNotShareFlights(t *testing.T) {
 			var grants atomic.Int32
 			arrived := make(chan struct{}, 2)
 			release := make(chan struct{})
+			releaseGrant := releaseOnce(release)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				grants.Add(1)
 				arrived <- struct{}{}
@@ -207,6 +212,7 @@ func TestIsolatedClientsDoNotShareFlights(t *testing.T) {
 				fmt.Fprint(w, grantJSON("test-token"))
 			}))
 			defer srv.Close()
+			defer releaseGrant()
 
 			var wg sync.WaitGroup
 			for range 2 {
@@ -229,7 +235,7 @@ func TestIsolatedClientsDoNotShareFlights(t *testing.T) {
 					t.Fatal("both isolated clients must grant concurrently; one is waiting on the other's flight")
 				}
 			}
-			close(release)
+			releaseGrant()
 			wg.Wait()
 			if got := grants.Load(); got != 2 {
 				t.Errorf("grants: got %d, want 2", got)

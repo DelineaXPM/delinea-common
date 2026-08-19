@@ -102,6 +102,7 @@ func TestUseVaultRoutesToDiscoveredVault(t *testing.T) {
 		URL:               platformSrv.URL,
 		ClientID:          "cid",
 		ClientSecret:      "cs",
+		Cache:             NewMemoryCache(),
 		CACert:            append(certPEM(platformSrv), certPEM(vaultSrv)...),
 		AllowedVaultHosts: []string{vu.Host},
 	})
@@ -147,7 +148,7 @@ func TestVaultURLRefreshesAfterFreshnessWindow(t *testing.T) {
 	}))
 	t.Cleanup(platformSrv.Close)
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,6 +186,7 @@ func TestConcurrentExpiredVaultURLRefreshCoalesces(t *testing.T) {
 	var brokerCalls atomic.Int32
 	refreshStarted := make(chan struct{})
 	releaseRefresh := make(chan struct{})
+	releaseRefreshOnce := releaseOnce(releaseRefresh)
 	platformSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/identity/api/oauth2/token/xpmplatform":
@@ -201,8 +203,9 @@ func TestConcurrentExpiredVaultURLRefreshCoalesces(t *testing.T) {
 		}
 	}))
 	t.Cleanup(platformSrv.Close)
+	t.Cleanup(releaseRefreshOnce)
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +229,7 @@ func TestConcurrentExpiredVaultURLRefreshCoalesces(t *testing.T) {
 		}()
 	}
 	<-refreshStarted
-	close(releaseRefresh)
+	releaseRefreshOnce()
 	wg.Wait()
 	close(errCh)
 	for err := range errCh {
@@ -262,7 +265,7 @@ func TestVaultURLRejectsUntrustedRefreshWithoutCachingIt(t *testing.T) {
 	}))
 	t.Cleanup(platformSrv.Close)
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +316,7 @@ func TestVaultURLDoesNotUseExpiredRouteAfterBrokerFailure(t *testing.T) {
 	}))
 	t.Cleanup(platformSrv.Close)
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,6 +424,8 @@ func TestPanickingVaultLookupReleasesWaiters(t *testing.T) {
 	var brokerCalls atomic.Int32
 	lookupStarted := make(chan struct{})
 	releaseLookup := make(chan struct{})
+	releaseLookupOnce := releaseOnce(releaseLookup)
+	defer releaseLookupOnce()
 	response := func(r *http.Request, body string) *http.Response {
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -475,7 +480,7 @@ func TestPanickingVaultLookupReleasesWaiters(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	close(releaseLookup)
+	releaseLookupOnce()
 	if recovered := <-leaderPanic; recovered == nil {
 		t.Fatal("leader did not propagate caller transport panic")
 	}
@@ -505,7 +510,7 @@ func TestVaultURLCachesDifferentIDsIndependently(t *testing.T) {
 	}))
 	t.Cleanup(platformSrv.Close)
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,7 +544,7 @@ func TestVaultURLRejectsUntrustedHost(t *testing.T) {
 	}))
 	defer platformSrv.Close()
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s"})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -563,7 +568,7 @@ func TestVaultURLNoDefaultActiveVault(t *testing.T) {
 	}))
 	defer platformSrv.Close()
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s"})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -584,7 +589,7 @@ func TestVaultsAccessDenied(t *testing.T) {
 	}))
 	defer platformSrv.Close()
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s"})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -631,7 +636,7 @@ func TestVaultsRetriesBodyReadFailure(t *testing.T) {
 	defer platformSrv.Close()
 
 	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 3,
-		Backoff: func(int) time.Duration { return 0 }})
+		Backoff: func(int) time.Duration { return 0 }, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -679,7 +684,7 @@ func TestVaultsRejectsOversizedInventory(t *testing.T) {
 	}))
 	defer platformSrv.Close()
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -703,7 +708,7 @@ func TestVaultsOversizedAccessDeniedIsDenied(t *testing.T) {
 	}))
 	defer platformSrv.Close()
 
-	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1})
+	c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1, Cache: NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -729,7 +734,7 @@ func TestVaultsBrokerStatusClassification(t *testing.T) {
 				w.WriteHeader(status)
 			}
 		}))
-		c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1})
+		c, err := New(Config{URL: platformSrv.URL, ClientID: "c", ClientSecret: "s", Retries: 1, Cache: NewMemoryCache()})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -374,10 +374,17 @@ func TestDefaultCacheSharesGrantsAcrossClients(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	for range 3 {
+	for i := range 3 {
 		c, err := New(Config{URL: srv.URL, Username: "u", Password: "p"})
 		if err != nil {
 			t.Fatal(err)
+		}
+		if i == 0 {
+			// The process-wide cache intentionally outlives this test. Remove a
+			// same-address entry left by an earlier -count iteration, then leave
+			// no fixture token behind for a later test whose server reuses it.
+			defaultTokenCache.Evict(c.key)
+			t.Cleanup(func() { defaultTokenCache.Evict(c.key) })
 		}
 		if _, err := c.Token(context.Background()); err != nil {
 			t.Fatal(err)

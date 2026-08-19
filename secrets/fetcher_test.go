@@ -316,7 +316,7 @@ func TestNewWithClientTypedReads(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	ac, err := api.New(api.Config{URL: srv.URL, Username: "u", Password: "p"})
+	ac, err := api.New(api.Config{URL: srv.URL, Username: "u", Password: "p", Cache: api.NewMemoryCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
