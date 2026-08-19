@@ -7,7 +7,7 @@ tests are built only with the e2e tag:
   go test -tags e2e ./...
 
 By default, each live test skips when its fixtures are absent. Set
-DELINEA_TOOLS_TEST_REQUIRE_E2E=1 (or run make e2e-strict) to make every required
+DELINEA_COMMON_TEST_REQUIRE_E2E=1 (or run make e2e-strict) to make every required
 fixture absence fail; the scheduled workflow uses this mode so missing
 repository secrets cannot turn a green run into an empty run. The strict suite
 requires every fixture listed below, including its dedicated attachment secrets.
@@ -21,29 +21,30 @@ The live tests span both server-facing packages:
   - secrets/e2e_test.go          the secrets library (New + Resolve by ID/path,
                                  including attachment download)
 
-Both share one fixture set, keyed by target. The DELINEA_TOOLS_TEST_* names are
-retained as the shared live-tenant fixture contract used by delinea-tools too.
+Both share one fixture set, keyed by target. Common's fixtures use the
+DELINEA_COMMON_TEST_* prefix; the consuming CLI repository has its own
+DELINEA_TOOLS_TEST_* contract.
 
 SECRET SERVER FIXTURES
 ----------------------
 
-  DELINEA_TOOLS_TEST_SS_URL          base URL of a Secret Server or SSC tenant
-  DELINEA_TOOLS_TEST_SS_USERNAME     local user with API access
-  DELINEA_TOOLS_TEST_SS_PASSWORD     its password
-  DELINEA_TOOLS_TEST_SS_SECRET_ID    numeric id of a secret to read
-  DELINEA_TOOLS_TEST_SS_SECRET_PATH  folder path of that same secret, backslash
+  DELINEA_COMMON_TEST_SS_URL          base URL of a Secret Server or SSC tenant
+  DELINEA_COMMON_TEST_SS_USERNAME     local user with API access
+  DELINEA_COMMON_TEST_SS_PASSWORD     its password
+  DELINEA_COMMON_TEST_SS_SECRET_ID    numeric id of a secret to read
+  DELINEA_COMMON_TEST_SS_SECRET_PATH  folder path of that same secret, backslash
                                    delimited with a leading backslash, exactly as
                                    /api/v1/folders/<id> reports it in folderPath,
                                    followed by the secret's name — for example
                                    \ci\database\prod. Required by the strict suite;
                                    local runs skip the path cases without it
-  DELINEA_TOOLS_TEST_SS_SECRET_FIELD field slug to read
-  DELINEA_TOOLS_TEST_SS_SECRET_VALUE expected value of that field (the assertion)
+  DELINEA_COMMON_TEST_SS_SECRET_FIELD field slug to read
+  DELINEA_COMMON_TEST_SS_SECRET_VALUE expected value of that field (the assertion)
 Attachment fixtures:
 
-  DELINEA_TOOLS_TEST_SS_FILE_SECRET_ID     id of a secret with a file field
-  DELINEA_TOOLS_TEST_SS_FILE_SECRET_FIELD  slug of that file field
-  DELINEA_TOOLS_TEST_SS_FILE_SHA256        hexadecimal SHA-256 of its downloaded bytes
+  DELINEA_COMMON_TEST_SS_FILE_SECRET_ID     id of a secret with a file field
+  DELINEA_COMMON_TEST_SS_FILE_SECRET_FIELD  slug of that file field
+  DELINEA_COMMON_TEST_SS_FILE_SHA256        hexadecimal SHA-256 of its downloaded bytes
 
 Exercised: backend probing and target inference; the password grant; rejection
 of a deliberately invalid bearer token with HTTP 401; self-expiration of a
@@ -55,19 +56,19 @@ that verify eager file downloads byte-for-byte via SHA-256.
 PLATFORM FIXTURES
 -----------------
 
-  DELINEA_TOOLS_TEST_PLATFORM_URL            platform tenant URL
-  DELINEA_TOOLS_TEST_PLATFORM_CLIENT_ID      service-identity client_id
-  DELINEA_TOOLS_TEST_PLATFORM_CLIENT_SECRET  its client_secret
-  DELINEA_TOOLS_TEST_PLATFORM_SECRET_ID      id of a secret readable via the vault
-  DELINEA_TOOLS_TEST_PLATFORM_SECRET_PATH    folder path of that same secret (see the
+  DELINEA_COMMON_TEST_PLATFORM_URL            platform tenant URL
+  DELINEA_COMMON_TEST_PLATFORM_CLIENT_ID      service-identity client_id
+  DELINEA_COMMON_TEST_PLATFORM_CLIENT_SECRET  its client_secret
+  DELINEA_COMMON_TEST_PLATFORM_SECRET_ID      id of a secret readable via the vault
+  DELINEA_COMMON_TEST_PLATFORM_SECRET_PATH    folder path of that same secret (see the
                                            Secret Server note above)
-  DELINEA_TOOLS_TEST_PLATFORM_SECRET_FIELD   field slug to read
-  DELINEA_TOOLS_TEST_PLATFORM_SECRET_VALUE   expected value of that field (the assertion)
+  DELINEA_COMMON_TEST_PLATFORM_SECRET_FIELD   field slug to read
+  DELINEA_COMMON_TEST_PLATFORM_SECRET_VALUE   expected value of that field (the assertion)
 Attachment fixture:
 
-  DELINEA_TOOLS_TEST_PLATFORM_FILE_SECRET_ID     id of a secret with a file field
-  DELINEA_TOOLS_TEST_PLATFORM_FILE_SECRET_FIELD  slug of that file field
-  DELINEA_TOOLS_TEST_PLATFORM_FILE_SHA256        hexadecimal SHA-256 of its downloaded bytes
+  DELINEA_COMMON_TEST_PLATFORM_FILE_SECRET_ID     id of a secret with a file field
+  DELINEA_COMMON_TEST_PLATFORM_FILE_SECRET_FIELD  slug of that file field
+  DELINEA_COMMON_TEST_PLATFORM_FILE_SHA256        hexadecimal SHA-256 of its downloaded bytes
 
 Exercised: backend probing and target inference; the client-credentials grant;
 rejection of a deliberately invalid bearer token with HTTP 401;
@@ -75,8 +76,8 @@ pre-obtained-token validation and reuse; vault discovery via the broker;
 vault routing of GET /api/v1/secrets/<id> to the discovered vault; and the
 secrets library resolving fixtures by id and path through that vault. The
 additional fixtures cover attachment download. The Platform suites
-set DELINEA_TOOLS_TARGET=platform themselves; the fixtures only carry the tenant
-URL and client credentials.
+construct an explicit api.TargetPlatform configuration; the fixtures carry only
+the tenant URL and client credentials.
 
 The _PATH fixtures must name the same secret as the corresponding _ID fixture,
 so both resolve to the same _VALUE. That is deliberate: it asserts the two
@@ -84,13 +85,13 @@ reference forms agree, and needs no second expected value.
 
 Example (Platform):
 
-  export DELINEA_TOOLS_TEST_PLATFORM_URL=https://<tenant>.delinea.app
-  export DELINEA_TOOLS_TEST_PLATFORM_CLIENT_ID=<client-id>
-  export DELINEA_TOOLS_TEST_PLATFORM_CLIENT_SECRET=<client-secret>
-  export DELINEA_TOOLS_TEST_PLATFORM_SECRET_ID=1
-  export DELINEA_TOOLS_TEST_PLATFORM_SECRET_PATH='\folder\Secret Name'
-  export DELINEA_TOOLS_TEST_PLATFORM_SECRET_FIELD=Password
-  export DELINEA_TOOLS_TEST_PLATFORM_SECRET_VALUE=<expected-value>
+  export DELINEA_COMMON_TEST_PLATFORM_URL=https://<tenant>.delinea.app
+  export DELINEA_COMMON_TEST_PLATFORM_CLIENT_ID=<client-id>
+  export DELINEA_COMMON_TEST_PLATFORM_CLIENT_SECRET=<client-secret>
+  export DELINEA_COMMON_TEST_PLATFORM_SECRET_ID=1
+  export DELINEA_COMMON_TEST_PLATFORM_SECRET_PATH='\folder\Secret Name'
+  export DELINEA_COMMON_TEST_PLATFORM_SECRET_FIELD=Password
+  export DELINEA_COMMON_TEST_PLATFORM_SECRET_VALUE=<expected-value>
   go test -tags e2e ./...
 
 NOT COVERED / CACHE

@@ -296,7 +296,7 @@ func validateVaultURL(platform *url.URL, raw string, allowed []string) (*url.URL
 	if sameOrigin(platform, vu) || isDelineaCloudVaultURL(vu) || isAllowedVaultHost(vu, allowed) {
 		return vu, nil
 	}
-	return nil, fmt.Errorf("%w: untrusted vault host %q; if this on-premises deployment is expected, allow it explicitly (AllowedVaultHosts; delinea-util --vault-allow or DELINEA_TOOLS_VAULT_ALLOW)", ErrVault, vu.Host)
+	return nil, fmt.Errorf("%w: untrusted vault host %q; if this on-premises deployment is expected, allow it explicitly with Config.AllowedVaultHosts", ErrVault, vu.Host)
 }
 
 func isDelineaCloudVaultURL(vu *url.URL) bool {

@@ -363,7 +363,7 @@ func selfSignedCACertPEM(t *testing.T) []byte {
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "delinea-tools-test-ca"},
+		Subject:               pkix.Name{CommonName: "delinea-common-test-ca"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		IsCA:                  true,

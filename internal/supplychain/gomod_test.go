@@ -13,18 +13,22 @@ import (
 
 func TestGoModDeclaresNoDependencies(t *testing.T) {
 	root := moduleRoot(t)
-	requirements, err := declaredRequirements(filepath.Join(root, "go.mod"))
+	parsed, err := declaredModuleFile(filepath.Join(root, "go.mod"))
 	if err != nil {
 		t.Fatalf("parse go.mod: %v", err)
 	}
-	if len(requirements) != 0 {
-		got := make([]string, len(requirements))
-		for i, requirement := range requirements {
+	if len(parsed.Require) != 0 {
+		got := make([]string, len(parsed.Require))
+		for i, requirement := range parsed.Require {
 			got[i] = requirement.String()
 		}
 		t.Fatalf("go.mod declares third-party dependencies, but delinea-common must import only the Go standard library.\n"+
 			"offending require directive(s):\n\t%s\nremove the dependency, or the `go get` that introduced it",
 			strings.Join(got, "\n\t"))
+	}
+	if len(parsed.Replace) != 0 || len(parsed.Exclude) != 0 || len(parsed.Retract) != 0 {
+		t.Fatalf("go.mod must not contain replace, exclude, or retract directives (got replace=%d exclude=%d retract=%d)",
+			len(parsed.Replace), len(parsed.Exclude), len(parsed.Retract))
 	}
 }
 
@@ -95,19 +99,29 @@ func (r moduleRequirement) String() string {
 // or network access, while still accepting every syntax the active toolchain
 // accepts.
 func declaredRequirements(gomod string) ([]moduleRequirement, error) {
+	parsed, err := declaredModuleFile(gomod)
+	return parsed.Require, err
+}
+
+type moduleFile struct {
+	Require []moduleRequirement
+	Replace []json.RawMessage
+	Exclude []moduleRequirement
+	Retract []json.RawMessage
+}
+
+func declaredModuleFile(gomod string) (moduleFile, error) {
 	cmd := exec.Command("go", "mod", "edit", "-json", gomod)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("go mod edit: %w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+			return moduleFile{}, fmt.Errorf("go mod edit: %w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
 		}
-		return nil, fmt.Errorf("go mod edit: %w", err)
+		return moduleFile{}, fmt.Errorf("go mod edit: %w", err)
 	}
-	var parsed struct {
-		Require []moduleRequirement
-	}
+	var parsed moduleFile
 	if err := json.Unmarshal(out, &parsed); err != nil {
-		return nil, fmt.Errorf("decode go mod edit output: %w", err)
+		return moduleFile{}, fmt.Errorf("decode go mod edit output: %w", err)
 	}
-	return parsed.Require, nil
+	return parsed, nil
 }

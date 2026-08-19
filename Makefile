@@ -11,13 +11,13 @@ stress:
 	go test -shuffle=on -count=10 ./...
 
 ## e2e: end-to-end tests against real Delinea instances; requires the
-## DELINEA_TOOLS_TEST_* fixtures (see docs/E2E.txt) and skips cleanly when absent
+## DELINEA_COMMON_TEST_* fixtures (see docs/E2E.txt) and skips cleanly when absent
 e2e:
 	go test -count=1 -tags e2e ./...
 
 ## e2e-strict: run live tests and fail instead of skip when a required fixture is absent
 e2e-strict:
-	DELINEA_TOOLS_TEST_REQUIRE_E2E=1 go test -count=1 -tags e2e ./...
+	DELINEA_COMMON_TEST_REQUIRE_E2E=1 go test -count=1 -tags e2e ./...
 
 ## vet: vet the default and e2e builds
 vet:

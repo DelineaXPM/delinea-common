@@ -9,11 +9,11 @@ import (
 	"testing"
 )
 
-const requireEnv = "DELINEA_TOOLS_TEST_REQUIRE_E2E"
+const requireEnv = "DELINEA_COMMON_TEST_REQUIRE_E2E"
 
 // Require returns the named environment fixtures. Missing fixtures skip a
 // developer or fork run, but fail when the scheduled suite opts into strict
-// fixture enforcement with DELINEA_TOOLS_TEST_REQUIRE_E2E.
+// fixture enforcement with DELINEA_COMMON_TEST_REQUIRE_E2E.
 func Require(t testing.TB, keys ...string) map[string]string {
 	t.Helper()
 	values := make(map[string]string, len(keys))

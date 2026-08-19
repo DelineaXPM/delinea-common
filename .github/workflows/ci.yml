@@ -37,7 +37,7 @@ jobs:
         run: |
           go test -covermode=atomic -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out | awk '/^total:/ { seen=1; gsub(/%/, "", $3); print "total coverage: " $3 "%"; if ($3 + 0 < 88.0) exit 1 } END { if (!seen) { print "coverage gate: no total: line from go tool cover"; exit 1 } }'
-      # The live suites skip cleanly without DELINEA_TOOLS_TEST_* fixtures, so this
+      # The live suites skip cleanly without DELINEA_COMMON_TEST_* fixtures, so this
       # proves the e2e build compiles and its skip guards hold.
       - name: e2e build (skips without fixtures)
         run: go test -tags e2e ./...

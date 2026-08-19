@@ -23,21 +23,21 @@ func requireEnv(t *testing.T, keys ...string) map[string]string {
 }
 
 func ssConfig(t *testing.T) Config {
-	f := requireEnv(t, "DELINEA_TOOLS_TEST_SS_URL", "DELINEA_TOOLS_TEST_SS_USERNAME", "DELINEA_TOOLS_TEST_SS_PASSWORD")
+	f := requireEnv(t, "DELINEA_COMMON_TEST_SS_URL", "DELINEA_COMMON_TEST_SS_USERNAME", "DELINEA_COMMON_TEST_SS_PASSWORD")
 	return Config{
-		URL:      f["DELINEA_TOOLS_TEST_SS_URL"],
-		Username: f["DELINEA_TOOLS_TEST_SS_USERNAME"],
-		Password: f["DELINEA_TOOLS_TEST_SS_PASSWORD"],
+		URL:      f["DELINEA_COMMON_TEST_SS_URL"],
+		Username: f["DELINEA_COMMON_TEST_SS_USERNAME"],
+		Password: f["DELINEA_COMMON_TEST_SS_PASSWORD"],
 		Timeout:  time.Minute,
 	}
 }
 
 func platformConfig(t *testing.T) Config {
-	f := requireEnv(t, "DELINEA_TOOLS_TEST_PLATFORM_URL", "DELINEA_TOOLS_TEST_PLATFORM_CLIENT_ID", "DELINEA_TOOLS_TEST_PLATFORM_CLIENT_SECRET")
+	f := requireEnv(t, "DELINEA_COMMON_TEST_PLATFORM_URL", "DELINEA_COMMON_TEST_PLATFORM_CLIENT_ID", "DELINEA_COMMON_TEST_PLATFORM_CLIENT_SECRET")
 	return Config{
-		URL:          f["DELINEA_TOOLS_TEST_PLATFORM_URL"],
-		ClientID:     f["DELINEA_TOOLS_TEST_PLATFORM_CLIENT_ID"],
-		ClientSecret: f["DELINEA_TOOLS_TEST_PLATFORM_CLIENT_SECRET"],
+		URL:          f["DELINEA_COMMON_TEST_PLATFORM_URL"],
+		ClientID:     f["DELINEA_COMMON_TEST_PLATFORM_CLIENT_ID"],
+		ClientSecret: f["DELINEA_COMMON_TEST_PLATFORM_CLIENT_SECRET"],
 		Timeout:      time.Minute,
 	}
 }
@@ -86,7 +86,7 @@ func TestE2ESecretServerCurrentUser(t *testing.T) {
 
 func TestE2EPlatformVaultSecret(t *testing.T) {
 	cfg := platformConfig(t)
-	id := requireEnv(t, "DELINEA_TOOLS_TEST_PLATFORM_SECRET_ID")["DELINEA_TOOLS_TEST_PLATFORM_SECRET_ID"]
+	id := requireEnv(t, "DELINEA_COMMON_TEST_PLATFORM_SECRET_ID")["DELINEA_COMMON_TEST_PLATFORM_SECRET_ID"]
 	c, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -149,10 +149,10 @@ func TestE2EProbeBackend(t *testing.T) {
 		want Backend
 	}{
 		{"secret-server", func(t *testing.T) string {
-			return requireEnv(t, "DELINEA_TOOLS_TEST_SS_URL")["DELINEA_TOOLS_TEST_SS_URL"]
+			return requireEnv(t, "DELINEA_COMMON_TEST_SS_URL")["DELINEA_COMMON_TEST_SS_URL"]
 		}, BackendSecretServer},
 		{"platform", func(t *testing.T) string {
-			return requireEnv(t, "DELINEA_TOOLS_TEST_PLATFORM_URL")["DELINEA_TOOLS_TEST_PLATFORM_URL"]
+			return requireEnv(t, "DELINEA_COMMON_TEST_PLATFORM_URL")["DELINEA_COMMON_TEST_PLATFORM_URL"]
 		}, BackendPlatform},
 	}
 	for _, tt := range tests {
@@ -255,7 +255,7 @@ func TestE2EInvalidBearerIsUnauthorized(t *testing.T) {
 			base := tt.cfg(t)
 			client, err := New(Config{
 				URL: base.URL, Target: tt.target,
-				Token: "delinea-tools-deliberately-invalid-token", Timeout: time.Minute,
+				Token: "delinea-common-deliberately-invalid-token", Timeout: time.Minute,
 			})
 			if err != nil {
 				t.Fatal(err)
