@@ -23,7 +23,8 @@ func TestConfigFormattingRedactsCredentials(t *testing.T) {
 	cache.Store(api.CacheKey{Identity: "cache-key-secret"}, api.CachedToken{AccessToken: "cache-token-secret"})
 	cfg := Config{
 		URL: "https://url-user:url-password@vault.example.com/path?token=query-secret#fragment-secret", Username: "svc",
-		Password: "hunter2-pass", Token: "tok-abcd1234", Header: http.Header{"X-Gateway-Key": {"gateway-secret"}}, Cache: cache,
+		Password: "hunter2-pass", Token: "tok-abcd1234", AutoComment: "customer-ticket-secret",
+		Header: http.Header{"X-Gateway-Key": {"gateway-secret"}}, Cache: cache,
 	}
 	type role struct {
 		Name string
@@ -41,7 +42,7 @@ func TestConfigFormattingRedactsCredentials(t *testing.T) {
 		"json":     string(jsonBytes),
 	}
 	for verb, out := range outputs {
-		for _, secret := range []string{"hunter2-pass", "tok-abcd1234", "gateway-secret", "cache-key-secret", "cache-token-secret", "url-user", "url-password", "query-secret", "fragment-secret"} {
+		for _, secret := range []string{"hunter2-pass", "tok-abcd1234", "customer-ticket-secret", "gateway-secret", "cache-key-secret", "cache-token-secret", "url-user", "url-password", "query-secret", "fragment-secret"} {
 			if strings.Contains(out, secret) {
 				t.Errorf("%s leaked %q: %s", verb, secret, out)
 			}

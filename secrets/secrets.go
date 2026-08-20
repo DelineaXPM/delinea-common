@@ -58,6 +58,7 @@ type Config struct {
 	Password          string
 	Domain            string
 	Token             string // pre-obtained bearer token, at least four bytes; when set, callers skip Username/Password
+	AutoComment       string // optional Secret Server audit comment, sent as autoComment on secret metadata reads; never sent on attachment reads
 	CACert            []byte // optional PEM bundle of trusted roots, added to the system trust store rather than replacing it
 	SkipTLSVerify     bool   // skip TLS certificate verification (MITM risk); scoped to this client's transport, so other connections in the process are unaffected
 	Timeout           time.Duration
@@ -87,6 +88,9 @@ func (c Config) withRedactedCredentials() Config {
 	if c.Token != "" {
 		c.Token = "[REDACTED]"
 	}
+	if c.AutoComment != "" {
+		c.AutoComment = "[REDACTED]"
+	}
 	if c.Header != nil {
 		c.Header = c.Header.Clone()
 		for name, values := range c.Header {
@@ -106,10 +110,10 @@ func (c Config) withRedactedCredentials() Config {
 	return c
 }
 
-// String renders Password, Token, and Header values as "[REDACTED]" and omits
-// opaque extension points, so a Config logged through the fmt verbs — including
-// %+v of a struct that embeds one, the common consumer shape — never emits a
-// credential.
+// String renders Password, Token, AutoComment, and Header values as
+// "[REDACTED]" and omits opaque extension points, so a Config logged through
+// the fmt verbs — including %+v of a struct that embeds one, the common consumer
+// shape — never emits credential or audit data.
 func (c Config) String() string {
 	type plain Config
 	return fmt.Sprintf("%+v", plain(c.withRedactedCredentials()))
@@ -118,11 +122,11 @@ func (c Config) String() string {
 // GoString makes %#v redact exactly as String does.
 func (c Config) GoString() string { return c.String() }
 
-// MarshalJSON emits the Config with credentials and Header values replaced by
-// "[REDACTED]" — JSON encoders (structured loggers included) never see a
-// credential, and a marshaled Config cannot round-trip one onto disk by design.
-// Decoding a configuration file into Config is unaffected; Backoff, Cache, and
-// Logger are not serializable and are skipped.
+// MarshalJSON emits the Config with credentials, AutoComment, and Header values
+// replaced by "[REDACTED]" — JSON encoders (structured loggers included) never
+// see credential or audit data, and a marshaled Config cannot round-trip it onto
+// disk by design. Decoding a configuration file into Config is unaffected;
+// Backoff, Cache, and Logger are not serializable and are skipped.
 func (c Config) MarshalJSON() ([]byte, error) {
 	type plain Config
 	return json.Marshal(plain(c.withRedactedCredentials()))
@@ -267,7 +271,13 @@ func New(cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("configuring Delinea client: %w", err)
 	}
-	return newClient(&apiFetcher{c: c, vault: cfg.Target == api.TargetPlatform}, cfg.Timeout), nil
+	return newClient(&apiFetcher{c: c, vault: cfg.Target == api.TargetPlatform, autoComment: cfg.AutoComment}, cfg.Timeout), nil
+}
+
+// ClientOptions configures secret-read behavior when an existing api.Client
+// supplies authentication and transport.
+type ClientOptions struct {
+	AutoComment string // optional Secret Server audit comment; see Config.AutoComment
 }
 
 // NewWithClient builds a resolver over an already-configured api.Client, so an
@@ -281,7 +291,16 @@ func New(cfg Config) (*Client, error) {
 // Retries and Timeout on the client, and pass a context with a deadline to
 // Resolve or Verify to bound the whole call.
 func NewWithClient(c *api.Client) *Client {
-	return newClient(&apiFetcher{c: c, vault: c.Target() == api.TargetPlatform}, 0)
+	return NewWithClientOptions(c, ClientOptions{})
+}
+
+// NewWithClientOptions is NewWithClient with secret-read options such as an
+// audit comment. The injected api.Client remains the sole owner of transport,
+// authentication, retry, and timeout policy.
+func NewWithClientOptions(c *api.Client, options ClientOptions) *Client {
+	return newClient(&apiFetcher{
+		c: c, vault: c.Target() == api.TargetPlatform, autoComment: options.AutoComment,
+	}, 0)
 }
 
 // NewWithFetcher wraps an arbitrary Fetcher, primarily for testing. It
@@ -479,7 +498,8 @@ func classify(err error) error {
 // only once. The built-in API fetcher retries transient transport errors
 // according to api.Config; an arbitrary Fetcher supplied through NewWithFetcher
 // owns its retry policy. ctx bounds the whole call, and when Timeout is set it
-// applies as an additional deadline.
+// applies as an additional deadline. On any error Resolve returns a nil slice;
+// variables resolved before the failure are never exposed to the caller.
 func (c *Client) Resolve(ctx context.Context, mappings []Mapping) ([]Var, error) {
 	return run(ctx, c.timeout, func(ctx context.Context) ([]Var, error) { return c.resolve(ctx, mappings) })
 }

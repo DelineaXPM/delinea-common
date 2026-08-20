@@ -13,7 +13,9 @@
 // Each formatter validates what its sink can carry intact and returns an
 // error naming the first variable it cannot deliver — a value silently
 // corrupted in transit (a stripped space, a mangled line) is worse than a
-// loud failure. Duplicate variable names are refused everywhere.
+// loud failure. Duplicate variable names are refused everywhere. Shell and
+// GitHub sinks require environment identifiers; Azure Pipelines additionally
+// accepts dots and hyphens, which its macro-variable namespace supports.
 //
 // Every returned string contains secret values. Write it promptly to the
 // sink it was formatted for and nowhere else — never a log. Emit GitHubMask
@@ -163,7 +165,7 @@ func GitHubMask(vars []secrets.Var) (string, error) {
 // or securefile prefixes are refused case-insensitively. Names also compare
 // case-insensitively for duplicate detection, matching the agent's variable map.
 func AzurePipelines(vars []secrets.Var) (string, error) {
-	if err := checkNames(vars); err != nil {
+	if err := checkAzureNames(vars); err != nil {
 		return "", err
 	}
 	if err := checkFoldedNames(vars, "Azure Pipelines"); err != nil {
@@ -223,14 +225,28 @@ func azureEscapeProperty(s string) string {
 
 func isLineBreak(r rune) bool { return r == '\n' || r == '\r' }
 
-// checkNames enforces the naming rule every sink shares — the same rule the
-// mapping parser applies — and refuses two variables with one name, where
-// the last write would silently win.
+// checkNames enforces the environment naming rule shared by the shell and
+// GitHub sinks — the same rule the mapping parser applies — and refuses two
+// variables with one name, where the last write would silently win.
 func checkNames(vars []secrets.Var) error {
+	return checkNamesWith(vars, secrets.ValidEnvName,
+		"letters, digits, underscore; not starting with a digit")
+}
+
+// checkAzureNames admits Azure Pipelines macro-variable names such as
+// DSS_private-key. They are not necessarily environment names: secret pipeline
+// variables are referenced as $(NAME) and only enter a process environment when
+// a later step maps them explicitly.
+func checkAzureNames(vars []secrets.Var) error {
+	return checkNamesWith(vars, validAzureName,
+		"letters, digits, underscore, dot, or hyphen; not starting with a digit, dot, or hyphen")
+}
+
+func checkNamesWith(vars []secrets.Var, valid func(string) bool, rule string) error {
 	seen := make(map[string]bool, len(vars))
 	for _, v := range vars {
-		if !secrets.ValidEnvName(v.Name) {
-			return fmt.Errorf("%q is not a valid variable name (letters, digits, underscore; not starting with a digit)", v.Name)
+		if !valid(v.Name) {
+			return fmt.Errorf("%q is not a valid variable name (%s)", v.Name, rule)
 		}
 		if seen[v.Name] {
 			return fmt.Errorf("two variables named %s; the later value would silently win", v.Name)
@@ -238,6 +254,16 @@ func checkNames(vars []secrets.Var) error {
 		seen[v.Name] = true
 	}
 	return nil
+}
+
+func validAzureName(name string) bool {
+	for i, r := range name {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r == '_' || i > 0 && (r >= '0' && r <= '9' || r == '.' || r == '-') {
+			continue
+		}
+		return false
+	}
+	return name != ""
 }
 
 // checkFoldedNames rejects names that a case-insensitive sink treats as one

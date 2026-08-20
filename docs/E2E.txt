@@ -50,8 +50,9 @@ Exercised: backend probing and target inference; the password grant; rejection
 of a deliberately invalid bearer token with HTTP 401; self-expiration of a
 disposable cached token and recovery from Secret Server's exact expired-token 403;
 GET /api/v1/users/current; validation and reuse of a pre-obtained token; the
-secrets library resolving the fixture by id and @path; and attachment fixtures
-that verify eager file downloads byte-for-byte via SHA-256.
+secrets library resolving the fixture by id and @path; an id read carrying a
+non-sensitive autoComment audit value; and attachment fixtures that verify eager
+file downloads byte-for-byte via SHA-256.
 
 PLATFORM FIXTURES
 -----------------

@@ -78,6 +78,16 @@ func TestE2ESecretServer(t *testing.T) {
 		"V="+e["DELINEA_COMMON_TEST_SS_SECRET_FIELD"]+"#"+e["DELINEA_COMMON_TEST_SS_SECRET_ID"], e["DELINEA_COMMON_TEST_SS_SECRET_VALUE"])
 }
 
+func TestE2ESecretServerAutoComment(t *testing.T) {
+	e := requireEnv(t,
+		"DELINEA_COMMON_TEST_SS_URL", "DELINEA_COMMON_TEST_SS_USERNAME", "DELINEA_COMMON_TEST_SS_PASSWORD",
+		"DELINEA_COMMON_TEST_SS_SECRET_ID", "DELINEA_COMMON_TEST_SS_SECRET_FIELD", "DELINEA_COMMON_TEST_SS_SECRET_VALUE")
+	cfg := ssConfig(e)
+	cfg.AutoComment = "delinea-common live test"
+	e2eCheck(t, cfg,
+		"V="+e["DELINEA_COMMON_TEST_SS_SECRET_FIELD"]+"#"+e["DELINEA_COMMON_TEST_SS_SECRET_ID"], e["DELINEA_COMMON_TEST_SS_SECRET_VALUE"])
+}
+
 // Resolving by path exercises the mapping syntax that no id-based fixture can:
 // the path fixture must name the same secret as the id fixture, so both must
 // yield the same value. Only ever referencing secrets by id is why a broken

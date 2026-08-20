@@ -177,6 +177,42 @@ func TestResolveOrderAndCache(t *testing.T) {
 	}
 }
 
+func TestResolveReturnsNoPartialResults(t *testing.T) {
+	tests := []struct {
+		name     string
+		mappings []Mapping
+		byID     map[int]*Secret
+	}{
+		{
+			name: "later field missing",
+			mappings: []Mapping{
+				{EnvName: "GOOD", SecretID: 9, Field: "password"},
+				{EnvName: "MISSING", SecretID: 9, Field: "username"},
+			},
+			byID: map[int]*Secret{9: {Fields: []SecretField{field("password", "p")}}},
+		},
+		{
+			name: "later fetch fails",
+			mappings: []Mapping{
+				{EnvName: "GOOD", SecretID: 9, Field: "password"},
+				{EnvName: "MISSING", SecretID: 10, Field: "password"},
+			},
+			byID: map[int]*Secret{9: {Fields: []SecretField{field("password", "p")}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewWithFetcher(newFake(tt.byID)).Resolve(context.Background(), tt.mappings)
+			if err == nil {
+				t.Fatal("got nil error, want the later mapping to fail")
+			}
+			if got != nil {
+				t.Errorf("got partial results %+v, want nil", got)
+			}
+		})
+	}
+}
+
 func TestResolveExpand(t *testing.T) {
 	f := newFake(map[int]*Secret{
 		9: {Fields: []SecretField{

@@ -136,12 +136,18 @@ path needs a human mailbox). Highest drift risk.
 
 - By id: `GET /api/v1/secrets/{id}`
 - By path: `GET /api/v1/secrets/0?secretPath={escaped}`
+- When `secrets.Config.AutoComment` (or `ClientOptions.AutoComment`) is set, its
+  URL-encoded value is added as `autoComment` to either metadata-read form. The
+  audit comment is not copied to attachment requests.
 - File field content: `GET /api/v1/secrets/{id}/fields/{slug}` (slug path-escaped;
   empty and dot-segment slugs are rejected before URL resolution)
 - Secret JSON: `items[]`, each with `slug`, `itemValue`, `isFile`,
   `fileAttachmentId`, `filename`, `fieldName`. A field is resolved by `slug` or
   `fieldName`. File fields are downloaded and substituted; fan-out is capped
   (count and total bytes).
+- `Resolve` validates every mapping before the first fetch. A later fetch,
+  field, expansion, or collision failure returns a nil variable slice rather
+  than exposing values already resolved in the batch.
 
 ## Health probe — `api/probe.go`
 

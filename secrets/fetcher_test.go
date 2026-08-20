@@ -124,6 +124,66 @@ func TestFetcherSecretByPath(t *testing.T) {
 	}
 }
 
+func TestFetcherAddsAutoCommentOnlyToSecretMetadataReads(t *testing.T) {
+	const comment = "ADO build 109; approved=yes"
+	metadataCalls := 0
+	srv := ssServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/secrets/7":
+			metadataCalls++
+			if got := r.URL.Query().Get("autoComment"); got != comment {
+				t.Errorf("id autoComment: got %q, want %q", got, comment)
+			}
+			fmt.Fprint(w, `{"id":7,"items":[{"fieldName":"Key","slug":"private-key","isFile":true,"fileAttachmentId":12,"filename":"key.pem"}]}`)
+		case "/api/v1/secrets/0":
+			metadataCalls++
+			if got := r.URL.Query().Get("autoComment"); got != comment {
+				t.Errorf("path autoComment: got %q, want %q", got, comment)
+			}
+			if got := r.URL.Query().Get("secretPath"); got != `\ci\key` {
+				t.Errorf("secretPath: got %q", got)
+			}
+			fmt.Fprint(w, `{"id":7,"items":[{"fieldName":"Key","slug":"private-key","isFile":true,"fileAttachmentId":12,"filename":"key.pem"}]}`)
+		case "/api/v1/secrets/7/fields/private-key":
+			if r.URL.RawQuery != "" {
+				t.Errorf("attachment query: got %q, want none", r.URL.RawQuery)
+			}
+			fmt.Fprint(w, "KEY")
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+	c, err := New(Config{
+		URL: srv.URL, Username: "u", Password: "p", AutoComment: comment,
+		Cache: api.NewMemoryCache(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Secret(context.Background(), 7); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.SecretByPath(context.Background(), `\ci\key`); err != nil {
+		t.Fatal(err)
+	}
+	if metadataCalls != 2 {
+		t.Errorf("metadata calls: got %d, want 2", metadataCalls)
+	}
+}
+
+func TestFetcherOmitsEmptyAutoComment(t *testing.T) {
+	srv := ssServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if _, present := r.URL.Query()["autoComment"]; present {
+			t.Errorf("empty autoComment must be omitted: %q", r.URL.RawQuery)
+		}
+		fmt.Fprint(w, `{"id":7,"items":[{"slug":"password","itemValue":"pw"}]}`)
+	})
+	if _, err := ssClient(t, srv.URL).Secret(context.Background(), 7); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFetcherRejectsInvalidOrMismatchedSecretID(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -364,6 +424,22 @@ func TestNewWithClientTypedReads(t *testing.T) {
 	}
 	if v, _ := sec.Field("password"); v != "bypath" {
 		t.Errorf("SecretByPath: got %q, want bypath", v)
+	}
+}
+
+func TestNewWithClientOptionsAddsAutoComment(t *testing.T) {
+	srv := ssServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("autoComment"); got != "build 36" {
+			t.Errorf("autoComment: got %q, want %q", got, "build 36")
+		}
+		fmt.Fprint(w, `{"id":126,"items":[{"slug":"password","itemValue":"pw"}]}`)
+	})
+	ac, err := api.New(api.Config{URL: srv.URL, Username: "u", Password: "p", Cache: api.NewMemoryCache()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewWithClientOptions(ac, ClientOptions{AutoComment: "build 36"}).Secret(context.Background(), 126); err != nil {
+		t.Fatal(err)
 	}
 }
 

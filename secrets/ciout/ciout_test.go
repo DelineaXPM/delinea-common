@@ -168,14 +168,14 @@ func TestGitHubMaskRefusesInvalidUTF8(t *testing.T) {
 
 func TestAzurePipelines(t *testing.T) {
 	out, err := AzurePipelines([]secrets.Var{
-		v("DB_PASS", "s3cr3t%0D]still-data"),
+		v("DSS_private-key", "s3cr3t%0D]still-data"),
 		v("EMPTY", ""),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := "##vso[task.setsecret]s3cr3t%AZP250D]still-data\n" +
-		"##vso[task.setvariable variable=DB_PASS;issecret=true]s3cr3t%AZP250D]still-data\n" +
+		"##vso[task.setvariable variable=DSS_private-key;issecret=true]s3cr3t%AZP250D]still-data\n" +
 		"##vso[task.setvariable variable=EMPTY;issecret=true]\n"
 	if out != want {
 		t.Errorf("got %q, want %q", out, want)
@@ -236,7 +236,29 @@ func TestAzurePipelinesRejectsCaseInsensitiveDuplicates(t *testing.T) {
 	}
 }
 
-func TestAllFormattersShareNameRules(t *testing.T) {
+func TestAzurePipelinesNameRulesAreSinkSpecific(t *testing.T) {
+	for _, name := range []string{"DSS_private-key", "DSS.private-key", "_leading"} {
+		if _, err := AzurePipelines([]secrets.Var{v(name, "x")}); err != nil {
+			t.Errorf("AzurePipelines %q: got %v, want accepted", name, err)
+		}
+	}
+	for _, name := range []string{"1BAD", ".BAD", "-BAD", "BAD NAME", "BAD;NAME", "BAD]NAME", "BÄD"} {
+		if out, err := AzurePipelines([]secrets.Var{v(name, "x")}); err == nil || !strings.Contains(err.Error(), "not a valid variable name") || out != "" {
+			t.Errorf("AzurePipelines %q: got output %q, error %v; want a validation refusal with no output", name, out, err)
+		}
+	}
+	for formatter, f := range map[string]func([]secrets.Var) (string, error){
+		"Shell": Shell, "GitHubEnv": GitHubEnv, "GitHubOutput": GitHubOutput, "GitHubMask": GitHubMask,
+	} {
+		for _, name := range []string{"DSS_private-key", "DSS.private.key"} {
+			if _, err := f([]secrets.Var{v(name, "x")}); err == nil {
+				t.Errorf("%s %q: got nil error, want the environment-name rule", formatter, name)
+			}
+		}
+	}
+}
+
+func TestAllFormattersRejectLeadingDigitsAndExactDuplicates(t *testing.T) {
 	formatters := map[string]func([]secrets.Var) (string, error){
 		"Shell": Shell, "GitHubEnv": GitHubEnv, "GitHubOutput": GitHubOutput,
 		"GitHubMask": GitHubMask, "AzurePipelines": AzurePipelines,

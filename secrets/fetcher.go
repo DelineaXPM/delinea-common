@@ -41,8 +41,9 @@ const (
 // downloaded and substituted for their placeholder ItemValue, so callers see
 // the content transparently.
 type apiFetcher struct {
-	c     *api.Client
-	vault bool
+	c           *api.Client
+	vault       bool
+	autoComment string
 }
 
 func (f *apiFetcher) CloseIdleConnections() { f.c.CloseIdleConnections() }
@@ -52,11 +53,30 @@ func (f *apiFetcher) CloseIdleConnections() { f.c.CloseIdleConnections() }
 func (f *apiFetcher) String() string { return f.c.String() }
 
 func (f *apiFetcher) Secret(ctx context.Context, id int) (*Secret, error) {
-	return f.fetch(ctx, "/api/v1/secrets/"+strconv.Itoa(id), id)
+	return f.fetch(ctx, f.secretPath("/api/v1/secrets/"+strconv.Itoa(id), nil), id)
 }
 
 func (f *apiFetcher) SecretByPath(ctx context.Context, path string) (*Secret, error) {
-	return f.fetch(ctx, "/api/v1/secrets/0?secretPath="+url.QueryEscape(path), 0)
+	query := url.Values{"secretPath": {path}}
+	return f.fetch(ctx, f.secretPath("/api/v1/secrets/0", query), 0)
+}
+
+// secretPath adds the optional audit comment to metadata reads. Attachment
+// reads deliberately bypass it: the initial secret read records access once,
+// and arbitrary audit text must not be copied onto every follow-up URL.
+func (f *apiFetcher) secretPath(path string, query url.Values) string {
+	if f.autoComment == "" && len(query) == 0 {
+		return path
+	}
+	cloned := make(url.Values, len(query)+1)
+	for name, values := range query {
+		cloned[name] = append([]string(nil), values...)
+	}
+	query = cloned
+	if f.autoComment != "" {
+		query.Set("autoComment", f.autoComment)
+	}
+	return path + "?" + query.Encode()
 }
 
 func (f *apiFetcher) fetch(ctx context.Context, path string, expectedID int) (*Secret, error) {

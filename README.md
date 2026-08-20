@@ -56,6 +56,7 @@ client, err := secrets.New(secrets.Config{
 	URL:      baseURL,
 	Username: username,
 	Password: password,
+	// AutoComment: "deployment 123", // optional Secret Server audit comment
 })
 if err != nil {
 	log.Fatal(err)
@@ -72,9 +73,33 @@ if err != nil {
 }
 ```
 
+`Resolve` is all-or-nothing: any mapping, fetch, field, or collision error
+returns a nil result, never the variables resolved before the failure. Secret
+reads may already have occurred, but delivery remains the caller's separate
+step.
+
+`AutoComment` is URL-encoded as Secret Server's `autoComment` query parameter
+on each secret metadata read, including reads by path. It is omitted from file
+attachment requests. Use `secrets.NewWithClientOptions` when sharing an
+`api.Client` and an audit comment is also required; plain `NewWithClient`
+retains the no-comment behavior.
+
 Use `secrets.NewWithClient` to share an `api.Client`, or
 `secrets.NewWithFetcher` to supply another concurrency-safe backend. The
 `secretstest` package provides a deterministic fetcher for consumer tests.
+
+The `ciout.AzurePipelines` formatter accepts Azure macro-variable names with
+dots and hyphens, such as `DSS_private-key`. Shell and GitHub formatters keep
+the stricter environment-name rule because their outputs become environment
+variables or environment-file entries. Every formatter validates the complete
+input before returning any payload.
+
+## Testing
+
+CI runs the race-enabled unit suite and e2e-tag build on Ubuntu, macOS, and
+Windows. A separate cross-build covers linux/amd64, linux/arm64, darwin/arm64,
+and windows/amd64. Scheduled live tests exercise Secret Server and Platform;
+fixture details are in [docs/E2E.txt](docs/E2E.txt).
 
 ## Security model
 
