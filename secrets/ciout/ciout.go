@@ -126,8 +126,9 @@ func githubFile(vars []secrets.Var) (string, error) {
 }
 
 // GitHubMask renders ::add-mask:: workflow commands, one per line of each
-// value, so GitHub's log masking covers multiline secrets (GitHub masks per
-// line). A line is any maximal run between line breaks — split on both CR and
+// value, so GitHub can attempt to mask each line of a multiline secret. Runner
+// redaction is best effort and must not be treated as a guarantee. A line is
+// any maximal run between line breaks — split on both CR and
 // LF, not LF alone — so a value ending in a bare carriage return, or using CR
 // line endings, still has every content line registered as a mask rather than
 // a "value\r" that a later CR-normalizing step would leave unmasked. Percent
