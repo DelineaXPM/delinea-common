@@ -132,7 +132,9 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	return json.Marshal(plain(c.withRedactedCredentials()))
 }
 
-// Var is a resolved secret field, ready to expose as an environment variable.
+// Var pairs a resolved secret field with its sink-neutral delivery name.
+// Resolve returns names that satisfy ValidVariableName; environment sinks must
+// additionally require ValidEnvName.
 type Var struct {
 	Name  string
 	Value string

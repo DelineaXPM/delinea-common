@@ -226,8 +226,8 @@ func azureEscapeProperty(s string) string {
 func isLineBreak(r rune) bool { return r == '\n' || r == '\r' }
 
 // checkNames enforces the environment naming rule shared by the shell and
-// GitHub sinks — the same rule the mapping parser applies — and refuses two
-// variables with one name, where the last write would silently win.
+// GitHub sinks and refuses two variables with one exact name, where the last
+// write would silently win.
 func checkNames(vars []secrets.Var) error {
 	return checkNamesWith(vars, secrets.ValidEnvName,
 		"letters, digits, underscore; not starting with a digit")
