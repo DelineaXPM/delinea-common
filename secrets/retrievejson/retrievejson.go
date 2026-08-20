@@ -99,8 +99,8 @@ func Parse(data []byte) ([]secrets.Mapping, error) {
 			return nil, fmt.Errorf("entry %d: secretKey is required", n)
 		case e.OutputVariable == "":
 			return nil, fmt.Errorf("entry %d: outputVariable is required", n)
-		case !secrets.ValidEnvName(e.OutputVariable):
-			return nil, fmt.Errorf("entry %d: outputVariable %q is not a valid variable name (letters, digits, underscore; not starting with a digit)", n, e.OutputVariable)
+		case !secrets.ValidVariableName(e.OutputVariable):
+			return nil, fmt.Errorf("entry %d: outputVariable %q is not a valid variable name (letters, digits, underscore, dot, or hyphen; not starting with a digit, dot, or hyphen)", n, e.OutputVariable)
 		}
 		if prev, dup := seen[e.OutputVariable]; dup {
 			return nil, fmt.Errorf("entries %d and %d both define outputVariable %q", prev, n, e.OutputVariable)

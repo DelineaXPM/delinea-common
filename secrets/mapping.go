@@ -6,7 +6,10 @@ import (
 	"strings"
 )
 
-// Mapping describes one secret field to resolve and the variable to bind it to.
+// Mapping describes one secret field to resolve and the output name to bind it
+// to. EnvName is historical: resolved names are sink-neutral and may include the
+// dots and hyphens Azure Pipelines accepts. A sink that creates environment
+// variables must enforce ValidEnvName before delivery.
 // Construct with ParseMapping, or directly: every field is exported.
 type Mapping struct {
 	EnvName  string
@@ -56,9 +59,10 @@ func ParseMapping(a string) (Mapping, error) {
 	if expand {
 		name = strings.TrimSuffix(name, "*")
 	}
-	// The name reaches a child process as an environment-variable name (or, in
-	// an expansion, as the prefix that every generated name starts with), so it
-	// must be a well-formed identifier. An expansion with an empty prefix is
+	// Keep the parser sink-neutral: Azure Pipelines macro variables admit dots
+	// and hyphens, while shell and GitHub delivery narrow names later with
+	// ValidEnvName. The shared grammar still excludes whitespace, metacharacters,
+	// Unicode, and leading punctuation. An expansion with an empty prefix is
 	// refused outright: it would let a secret's field slugs name top-level
 	// variables directly (PREFIX_ namespacing is what keeps an attacker-chosen
 	// slug from becoming LD_PRELOAD), and validating the empty string here is
@@ -66,8 +70,8 @@ func ParseMapping(a string) (Mapping, error) {
 	if expand && name == "" {
 		return Mapping{}, fmt.Errorf("invalid mapping %q: an expansion needs a non-empty prefix (PREFIX_*=...), so its generated names are namespaced", a)
 	}
-	if !validEnvName(name) {
-		return Mapping{}, fmt.Errorf("invalid mapping %q: %q is not a valid variable name (%s)", a, name, envNameRule)
+	if !validVariableName(name) {
+		return Mapping{}, fmt.Errorf("invalid mapping %q: %q is not a valid variable name (%s)", a, name, variableNameRule)
 	}
 
 	at := strings.IndexAny(ref, "#@")
@@ -108,15 +112,38 @@ func prefixIf(expand bool, name string) string {
 	return ""
 }
 
-// envNameRule is the human phrasing of validEnvName's rule, shared by every
-// message that rejects a bad variable name so they cannot drift.
-const envNameRule = "letters, digits, underscore; not starting with a digit"
+// variableNameRule is the sink-neutral mapping grammar. It is the union needed
+// by the supported sinks: environment identifiers plus Azure Pipelines dots and
+// hyphens. Individual sinks may impose a narrower rule.
+const variableNameRule = "letters, digits, underscore, dot, or hyphen; not starting with a digit, dot, or hyphen"
 
-// ValidEnvName reports whether s is a well-formed environment-variable name
-// by the one rule every mapping enforces: letters, digits, and underscores,
-// not starting with a digit. Exported so companion packages (retrievejson,
-// future output formatters) validate names identically instead of drifting.
+// ValidEnvName reports whether s is a well-formed environment-variable name:
+// letters, digits, and underscores, not starting with a digit. Environment,
+// shell, and GitHub sinks apply this narrower rule after sink-neutral mapping
+// resolution.
 func ValidEnvName(s string) bool { return validEnvName(s) }
+
+// ValidVariableName reports whether s is a safe sink-neutral mapping name. It
+// accepts the environment-name grammar plus dots and hyphens after the first
+// character, matching Azure Pipelines macro variables without admitting shell
+// metacharacters or ambiguous leading punctuation.
+func ValidVariableName(s string) bool { return validVariableName(s) }
+
+func validVariableName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r == '_':
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z':
+		case i > 0 && (r >= '0' && r <= '9' || r == '.' || r == '-'):
+		default:
+			return false
+		}
+	}
+	return true
+}
 
 // validEnvName reports whether s is a POSIX-shell-safe environment variable
 // name: an initial letter or underscore, then letters, digits, or underscores.

@@ -82,7 +82,10 @@ func TestParseMapping(t *testing.T) {
 	}{
 		{in: "DB_PASS=password#128", want: Mapping{EnvName: "DB_PASS", SecretID: 128, Field: "password"}},
 		{in: "DB_USER=username#128", want: Mapping{EnvName: "DB_USER", SecretID: 128, Field: "username"}},
+		{in: "DSS_private-key=password#128", want: Mapping{EnvName: "DSS_private-key", SecretID: 128, Field: "password"}},
+		{in: "DSS.private-key=password#128", want: Mapping{EnvName: "DSS.private-key", SecretID: 128, Field: "password"}},
 		{in: "DB_*=#128", want: Mapping{Prefix: "DB_", SecretID: 128, Expand: true}},
+		{in: "DSS-*=#128", want: Mapping{Prefix: "DSS-", SecretID: 128, Expand: true}},
 		{in: `DB_PASS=password@\ci\database\prod`, want: Mapping{EnvName: "DB_PASS", ByPath: true, Path: `\ci\database\prod`, Field: "password"}},
 		{in: `DB_*=@\ci\database\prod`, want: Mapping{Prefix: "DB_", ByPath: true, Path: `\ci\database\prod`, Expand: true}},
 
@@ -117,13 +120,16 @@ func TestParseMapping(t *testing.T) {
 		// field slugs name top-level variables (e.g. LD_PRELOAD) directly.
 		{in: "*=#128", wantErr: true},
 		{in: `*=@\ci\db`, wantErr: true},
-		// A name must be a well-formed identifier, so a shell metacharacter can
-		// never reach the name side of --via sh output.
+		// A name must use the safe union supported by the delivery sinks. Shell
+		// metacharacters and ambiguous leading punctuation remain invalid.
 		{in: "`id`=password#1", wantErr: true},
 		{in: "A B=password#1", wantErr: true},
 		{in: "A;B=password#1", wantErr: true},
 		{in: "A$X=password#1", wantErr: true},
 		{in: "1ABC=password#1", wantErr: true},
+		{in: ".ABC=password#1", wantErr: true},
+		{in: "-ABC=password#1", wantErr: true},
+		{in: "BÄD=password#1", wantErr: true},
 		{in: "_OK=password#1", want: Mapping{EnvName: "_OK", SecretID: 1, Field: "password"}},
 	}
 	for _, c := range cases {
@@ -174,6 +180,22 @@ func TestResolveOrderAndCache(t *testing.T) {
 	}
 	if f.calls["#128"] != 1 {
 		t.Errorf("fetch count for 128: got %d, want 1 (should cache)", f.calls["#128"])
+	}
+}
+
+func TestResolvePreservesSinkNeutralNames(t *testing.T) {
+	f := newFake(map[int]*Secret{
+		128: {Fields: []SecretField{field("password", "p")}},
+	})
+	got, err := NewWithFetcher(f).Resolve(context.Background(), []Mapping{
+		{EnvName: "DSS_private-key", SecretID: 128, Field: "password"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Var{{Name: "DSS_private-key", Value: "p"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
 
@@ -247,7 +269,7 @@ func TestDirectMappingRejectsInvalidStateBeforeFetcher(t *testing.T) {
 	c := NewWithFetcher(f)
 	for _, m := range []Mapping{
 		{EnvName: "BAD=NAME", SecretID: 9, Field: "password"},
-		{Prefix: "BAD-", SecretID: 9, Expand: true},
+		{Prefix: "BAD PREFIX", SecretID: 9, Expand: true},
 		{EnvName: "A", Field: "password"},
 		{EnvName: "A", ByPath: true, Field: "password"},
 		{EnvName: "A", ByPath: true, Path: `\p`, SecretID: 9, Field: "password"},
@@ -889,6 +911,19 @@ func TestValidEnvName(t *testing.T) {
 	for _, s := range []string{"", "1A", "A B", "a-b", "a.b", "`id`", "A;B", "A$B", "PATH="} {
 		if ValidEnvName(s) {
 			t.Errorf("ValidEnvName(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestValidVariableName(t *testing.T) {
+	for _, s := range []string{"A", "_", "DB_PASS", "DSS_private-key", "DSS.private-key", "A1B2"} {
+		if !ValidVariableName(s) {
+			t.Errorf("ValidVariableName(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"", "1A", ".A", "-A", "A B", "`id`", "A;B", "A$B", "PATH=", "BÄD"} {
+		if ValidVariableName(s) {
+			t.Errorf("ValidVariableName(%q) = true, want false", s)
 		}
 	}
 }

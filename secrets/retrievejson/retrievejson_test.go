@@ -11,7 +11,7 @@ import (
 
 func TestParseAcceptsBothIDSpellings(t *testing.T) {
 	got, err := Parse([]byte(`[
-		{"secretId": 126, "secretKey": "password", "outputVariable": "DB_PASS"},
+		{"secretId": 126, "secretKey": "password", "outputVariable": "DSS_private-key"},
 		{"secretId": "127", "secretKey": "username", "outputVariable": "DB_USER"},
 		{"secretPath": "\\ci\\db\\prod", "secretKey": "password", "outputVariable": "PROD_PASS"}
 	]`))
@@ -19,7 +19,7 @@ func TestParseAcceptsBothIDSpellings(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []secrets.Mapping{
-		{EnvName: "DB_PASS", SecretID: 126, Field: "password"},
+		{EnvName: "DSS_private-key", SecretID: 126, Field: "password"},
 		{EnvName: "DB_USER", SecretID: 127, Field: "username"},
 		{EnvName: "PROD_PASS", ByPath: true, Path: `\ci\db\prod`, Field: "password"},
 	}
@@ -84,7 +84,7 @@ func TestParseErrorsNameTheEntry(t *testing.T) {
 // Every mapping a successful parse yields must be resolvable by the real
 // client, so the parser cannot emit shapes the engine would reject.
 func TestParsedMappingsDriveTheClient(t *testing.T) {
-	mappings, err := Parse([]byte(`[{"secretId":126,"secretKey":"password","outputVariable":"DB_PASS"}]`))
+	mappings, err := Parse([]byte(`[{"secretId":126,"secretKey":"password","outputVariable":"DSS_private-key"}]`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,13 +95,14 @@ func TestParsedMappingsDriveTheClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(vars) != 1 || vars[0].Name != "DB_PASS" || vars[0].Value != "pw-126" {
+	if len(vars) != 1 || vars[0].Name != "DSS_private-key" || vars[0].Value != "pw-126" {
 		t.Errorf("resolve: got %v", vars)
 	}
 }
 
 func FuzzParse(f *testing.F) {
 	f.Add(`[{"secretId":126,"secretKey":"password","outputVariable":"DB_PASS"}]`)
+	f.Add(`[{"secretId":126,"secretKey":"password","outputVariable":"DSS_private-key"}]`)
 	f.Add(`[{"secretId":"127","secretKey":"k","outputVariable":"V"}]`)
 	f.Add(`[{"secretPath":"\\a\\b","secretKey":"k","outputVariable":"V"}]`)
 	f.Add(`[]`)
@@ -113,7 +114,7 @@ func FuzzParse(f *testing.F) {
 			t.Errorf("error with non-nil mappings: %v / %v", err, mappings)
 		}
 		for _, m := range mappings {
-			if !secrets.ValidEnvName(m.EnvName) || m.Field == "" {
+			if !secrets.ValidVariableName(m.EnvName) || m.Field == "" {
 				t.Errorf("accepted an invalid mapping: %+v", m)
 			}
 			if (m.SecretID > 0) == m.ByPath {

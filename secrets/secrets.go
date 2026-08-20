@@ -589,16 +589,16 @@ func validateMapping(m Mapping) error {
 		if m.Prefix == "" {
 			return fmt.Errorf("an expansion needs a non-empty Prefix, so its generated names are namespaced rather than chosen by the vault")
 		}
-		if !validEnvName(m.Prefix) {
-			return fmt.Errorf("mapping Prefix %q is not a valid variable-name prefix (%s)", m.Prefix, envNameRule)
+		if !validVariableName(m.Prefix) {
+			return fmt.Errorf("mapping Prefix %q is not a valid variable-name prefix (%s)", m.Prefix, variableNameRule)
 		}
 		return nil
 	}
 	if m.Prefix != "" {
 		return fmt.Errorf("a single-field mapping must not also set Prefix")
 	}
-	if !validEnvName(m.EnvName) {
-		return fmt.Errorf("mapping EnvName %q is not a valid variable name (%s)", m.EnvName, envNameRule)
+	if !validVariableName(m.EnvName) {
+		return fmt.Errorf("mapping EnvName %q is not a valid variable name (%s)", m.EnvName, variableNameRule)
 	}
 	if m.Field == "" {
 		return fmt.Errorf("a single-field mapping needs a non-empty Field")

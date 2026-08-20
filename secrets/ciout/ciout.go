@@ -238,7 +238,7 @@ func checkNames(vars []secrets.Var) error {
 // variables are referenced as $(NAME) and only enter a process environment when
 // a later step maps them explicitly.
 func checkAzureNames(vars []secrets.Var) error {
-	return checkNamesWith(vars, validAzureName,
+	return checkNamesWith(vars, secrets.ValidVariableName,
 		"letters, digits, underscore, dot, or hyphen; not starting with a digit, dot, or hyphen")
 }
 
@@ -254,16 +254,6 @@ func checkNamesWith(vars []secrets.Var, valid func(string) bool, rule string) er
 		seen[v.Name] = true
 	}
 	return nil
-}
-
-func validAzureName(name string) bool {
-	for i, r := range name {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r == '_' || i > 0 && (r >= '0' && r <= '9' || r == '.' || r == '-') {
-			continue
-		}
-		return false
-	}
-	return name != ""
 }
 
 // checkFoldedNames rejects names that a case-insensitive sink treats as one

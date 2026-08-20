@@ -11,6 +11,7 @@ import (
 func FuzzParseMapping(f *testing.F) {
 	for _, seed := range []string{
 		"DB_PASS=password#128",
+		"DSS_private-key=password#128",
 		`DB_PASS=password@\ci\database\prod`,
 		"DB_*=#128",
 		`DB_*=@\ci\database\prod`,

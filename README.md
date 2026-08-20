@@ -88,11 +88,11 @@ Use `secrets.NewWithClient` to share an `api.Client`, or
 `secrets.NewWithFetcher` to supply another concurrency-safe backend. The
 `secretstest` package provides a deterministic fetcher for consumer tests.
 
-The `ciout.AzurePipelines` formatter accepts Azure macro-variable names with
-dots and hyphens, such as `DSS_private-key`. Shell and GitHub formatters keep
-the stricter environment-name rule because their outputs become environment
-variables or environment-file entries. Every formatter validates the complete
-input before returning any payload.
+Mapping resolution and `retrievejson` preserve Azure macro-variable names with
+dots and hyphens, such as `DSS_private-key`. The `ciout.AzurePipelines`
+formatter accepts those names; shell and GitHub formatters apply the narrower
+environment-name rule at delivery. Every formatter validates the complete input
+before returning any payload.
 
 ## Testing
 
