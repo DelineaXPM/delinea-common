@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -139,6 +141,36 @@ func TestWithProbedTargetSetsTarget(t *testing.T) {
 	engine := cfg.EngineConfig()
 	if engine.ClientID != "id" || engine.ClientSecret != "sec" || engine.Username != "" {
 		t.Errorf("probed config must route the pair to client credentials: %s", engine)
+	}
+}
+
+func TestWithProbedTargetExplicitTargetSkipsProbe(t *testing.T) {
+	cfg := Config{
+		URL:      "://not-a-url",
+		Target:   api.TargetSecretServer,
+		Username: "user",
+		Password: "password",
+	}
+	got, err := cfg.WithProbedTarget(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.URL != cfg.URL || got.Target != cfg.Target || got.Username != cfg.Username || got.Password != cfg.Password {
+		t.Errorf("explicit target changed: got %s, want %s", got, cfg)
+	}
+}
+
+func TestWithProbedTargetPropagatesCancellation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	got, err := (Config{URL: srv.URL, Username: "user", Password: "password"}).WithProbedTarget(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("WithProbedTarget: got %v, want context.Canceled", err)
+	}
+	if !reflect.DeepEqual(got, Config{}) {
+		t.Errorf("failed probe returned nonzero config: %s", got)
 	}
 }
 

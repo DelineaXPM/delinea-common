@@ -59,6 +59,34 @@ func ssClient(t *testing.T, url string) *Client {
 	return c
 }
 
+type closeTrackingTransport struct {
+	closeCalls int
+}
+
+func (*closeTrackingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("unexpected request")
+}
+
+func (t *closeTrackingTransport) CloseIdleConnections() {
+	t.closeCalls++
+}
+
+func TestAPIFetcherCloseIdleConnectionsDelegates(t *testing.T) {
+	transport := new(closeTrackingTransport)
+	c, err := api.New(api.Config{
+		URL:       "https://vault.example.com",
+		Token:     "configured-token-value",
+		Transport: transport,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	(&apiFetcher{c: c}).CloseIdleConnections()
+	if transport.closeCalls != 1 {
+		t.Errorf("CloseIdleConnections delegated %d times, want 1", transport.closeCalls)
+	}
+}
+
 func TestFetcherSecretByID(t *testing.T) {
 	srv := ssServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/secrets/126" {

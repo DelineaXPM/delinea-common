@@ -846,13 +846,13 @@ func TestNewMissingURL(t *testing.T) {
 
 func TestValidEnvName(t *testing.T) {
 	for _, s := range []string{"A", "_", "DB_PASS", "_x9", "A1B2"} {
-		if !validEnvName(s) {
-			t.Errorf("validEnvName(%q) = false, want true", s)
+		if !ValidEnvName(s) {
+			t.Errorf("ValidEnvName(%q) = false, want true", s)
 		}
 	}
 	for _, s := range []string{"", "1A", "A B", "a-b", "a.b", "`id`", "A;B", "A$B", "PATH="} {
-		if validEnvName(s) {
-			t.Errorf("validEnvName(%q) = true, want false", s)
+		if ValidEnvName(s) {
+			t.Errorf("ValidEnvName(%q) = true, want false", s)
 		}
 	}
 }

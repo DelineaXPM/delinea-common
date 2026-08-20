@@ -649,6 +649,46 @@ func TestResponseDiagnosticRedactsOutboundHeaderValues(t *testing.T) {
 	}
 }
 
+func TestResponseDiagnosticFallbackRedactsCredentialSnapshots(t *testing.T) {
+	binding := responseDiagnosticBinding{
+		configuredToken:        "configured-token-value",
+		responseToken:          "response-token-value",
+		password:               "password-value",
+		clientSecret:           "client-secret-value",
+		configuredHeaderValues: []string{"configured-header-value"},
+		requestHeaderValues:    []string{"request-header-value"},
+	}
+	secrets := []string{
+		binding.configuredToken,
+		binding.responseToken,
+		binding.password,
+		binding.clientSecret,
+		binding.configuredHeaderValues[0],
+		binding.requestHeaderValues[0],
+	}
+	got := binding.diagnosticSnippet([]byte(strings.Join(secrets, " ")))
+	for _, secret := range secrets {
+		if strings.Contains(got, secret) {
+			t.Errorf("fallback diagnostic exposed %q: %q", secret, got)
+		}
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Errorf("fallback diagnostic did not show redaction: %q", got)
+	}
+}
+
+func TestRedactTextNeutralizesControlsAndPreservesLayout(t *testing.T) {
+	c, err := New(Config{URL: "https://vault.example.com", Token: "configured-token-value"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.redactText("question\x1b[31m\r\n\tanswer-value", "answer-value")
+	want := "question?[31m?\n\t[REDACTED]"
+	if got != want {
+		t.Errorf("redactText: got %q, want %q", got, want)
+	}
+}
+
 // BufferedResponse must not leak its request token through reflection-based
 // formatting: the redaction context lives in the weak registry, not in fields
 // a debug log's %+v would print. A copied value has no binding and fails
