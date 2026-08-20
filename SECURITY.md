@@ -5,9 +5,7 @@
 Report suspected vulnerabilities privately — please do not open a public GitHub
 issue. Use the **Report issue** link in Delinea's
 [Responsible Disclosure](https://trust.delinea.com/) portal, or contact Delinea
-product security through your usual Delinea support channel. After this
-repository is public, its **Security** tab may also offer private vulnerability
-reporting.
+product security through your usual Delinea support channel.
 
 ## Supply chain
 
@@ -41,8 +39,10 @@ that affects this module, the `go` directive is advanced to that patch release
 team policy supersedes it, the repository maintainer owns this bump and targets
 it within one week of a high- or critical-severity standard-library advisory.
 
-## Release artifacts
+## Release provenance
 
-The supply-chain evidence shipped with a tagged release (checksums, SBOM, build
-provenance, signature) is being decided as part of public-release preparation
-and is not yet finalized.
+delinea-common is distributed as tagged Go module source, not as a prebuilt
+artifact. Standard Go module resolution verifies public module content through
+the Go checksum database; consumers should pin reviewed versions and retain the
+resulting `go.sum` entries. The project does not currently publish a separate
+SBOM, signature, or provenance attestation for module tags.
