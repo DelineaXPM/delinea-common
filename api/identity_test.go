@@ -91,7 +91,7 @@ const startUPThenEmail = `{"SessionId":"s1","TenantId":"t1","Challenges":[
 
 func loginClient(t *testing.T, url string) *Client {
 	t.Helper()
-	c, err := New(Config{URL: url, Username: "cloudadmin@t", Password: "pw"})
+	c, err := New(Config{URL: url, Target: TargetPlatform, Username: "cloudadmin@t", Password: "pw"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,6 +172,25 @@ func TestInteractiveLoginExplicitPlatformTarget(t *testing.T) {
 	}
 	if tok != "tok-interactive" {
 		t.Errorf("token: got %q", tok)
+	}
+}
+
+func TestInteractiveLoginRejectsSecretServerTargetBeforeRequest(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests++
+	}))
+	defer srv.Close()
+	c, err := New(Config{URL: srv.URL, Target: TargetSecretServer, Username: "user", Password: "pw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.InteractiveLogin(context.Background(), &scriptPrompter{})
+	if !errors.Is(err, ErrConfig) || !strings.Contains(err.Error(), `Target "platform"`) {
+		t.Fatalf("got %v, want an ErrConfig directing the caller to Target platform", err)
+	}
+	if requests != 0 {
+		t.Fatalf("sent %d requests, want target validation before network I/O", requests)
 	}
 }
 
@@ -419,7 +438,7 @@ func TestInteractiveLoginErrors(t *testing.T) {
 }
 
 func TestInteractiveLoginRequiresCredentials(t *testing.T) {
-	c, err := New(Config{URL: "https://x.example.com", Token: "test-token"})
+	c, err := New(Config{URL: "https://x.example.com", Target: TargetPlatform, Token: "test-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +449,7 @@ func TestInteractiveLoginRequiresCredentials(t *testing.T) {
 }
 
 func TestInteractiveLoginRequiresPrompter(t *testing.T) {
-	c, err := New(Config{URL: "https://x.example.com", Username: "u", Password: "p"})
+	c, err := New(Config{URL: "https://x.example.com", Target: TargetPlatform, Username: "u", Password: "p"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +548,7 @@ func TestInteractiveLoginRedactsMechanismChoiceFields(t *testing.T) {
 		}
 		return `{"success":true,"Result":{"Summary":"LoginSuccess","OAuthTokens":{"access_token":"tok-choice"}}}`
 	})
-	c, err := New(Config{URL: srv.URL, Username: "cloudadmin@t", Password: password})
+	c, err := New(Config{URL: srv.URL, Target: TargetPlatform, Username: "cloudadmin@t", Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -628,7 +647,7 @@ func TestInteractiveLoginKeepsMechanismIdentityFieldsVerbatim(t *testing.T) {
 	srv := identityServer(t, start, func(t *testing.T, req advanceReq) string {
 		return `{"success":true,"Result":{"Summary":"LoginSuccess","OAuthTokens":{"access_token":"tok-mech"}}}`
 	})
-	c, err := New(Config{URL: srv.URL, Username: "cloudadmin@t", Password: password})
+	c, err := New(Config{URL: srv.URL, Target: TargetPlatform, Username: "cloudadmin@t", Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}

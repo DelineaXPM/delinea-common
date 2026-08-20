@@ -79,14 +79,18 @@ type advanceResult struct {
 
 // InteractiveLogin authenticates cfg.Username against the platform's
 // Identity API (StartAuthentication / AdvanceAuthentication) and returns the
-// resulting bearer token. This is the path for MFA-gated accounts (e.g.
-// cloudadmin@tenant) that the OAuth2 grants cannot serve, because those grants
-// cannot answer an MFA challenge. Redirect-based federated (external IdP / SSO)
-// logins are not supported: a redirect from StartAuthentication is refused
-// below. The password (UP) mechanism is answered from cfg.Password; every
-// other challenge is delegated to prompt. The token is returned, not cached;
-// pass it as Config.Token to later clients.
+// resulting bearer token. Config.Target must be TargetPlatform; other targets
+// are rejected before any request. This is the path for MFA-gated accounts
+// (e.g. cloudadmin@tenant) that the OAuth2 grants cannot serve, because those
+// grants cannot answer an MFA challenge. Redirect-based federated (external IdP
+// / SSO) logins are not supported: a redirect from StartAuthentication is
+// refused below. The password (UP) mechanism is answered from cfg.Password;
+// every other challenge is delegated to prompt. The token is returned, not
+// cached; pass it as Config.Token to later clients.
 func (c *Client) InteractiveLogin(ctx context.Context, prompt Prompter) (string, error) {
+	if c.target != TargetPlatform {
+		return "", fmt.Errorf("%w: interactive login requires Target %q", ErrConfig, TargetPlatform)
+	}
 	if c.cfg.Username == "" || c.cfg.Password == "" {
 		return "", fmt.Errorf("%w: interactive login requires Username and Password", ErrConfig)
 	}
