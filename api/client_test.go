@@ -183,6 +183,45 @@ func TestRejectsInvalidHeadersAsConfiguration(t *testing.T) {
 	}
 }
 
+type requestReadCounter struct {
+	reads int
+}
+
+func (r *requestReadCounter) Read([]byte) (int, error) {
+	r.reads++
+	return 0, io.EOF
+}
+
+func TestRejectsInvalidRequestSyntaxBeforeBodyOrGrant(t *testing.T) {
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c, err := New(Config{URL: srv.URL, Username: "u", Password: "p", DisableCache: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range []Request{
+		{Method: "BAD METHOD", Path: "/x"},
+		{Method: http.MethodGet, Path: "/bad%zz"},
+	} {
+		body := new(requestReadCounter)
+		req.Body = body
+		if _, err := c.Do(context.Background(), req); !errors.Is(err, ErrConfig) {
+			t.Errorf("%s %s: got %v, want ErrConfig", req.Method, req.Path, err)
+		}
+		if body.reads != 0 {
+			t.Errorf("%s %s: body read %d times, want 0", req.Method, req.Path, body.reads)
+		}
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("invalid requests reached the server %d times", got)
+	}
+}
+
 func TestValidateHeadersDoesNotExposeValues(t *testing.T) {
 	if err := ValidateHeaders(http.Header{"X-Gateway": {"valid-value"}}); err != nil {
 		t.Fatalf("valid header rejected: %v", err)

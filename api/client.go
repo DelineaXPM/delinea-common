@@ -1143,6 +1143,9 @@ func (c *Client) prepare(ctx context.Context, r Request) (method string, base *u
 	if err := ValidateHeaders(r.Header); err != nil {
 		return "", nil, nil, "", false, fmt.Errorf("%w: Request.Header: %v", ErrConfig, err)
 	}
+	if _, err := http.NewRequest(method, strings.TrimRight(c.base.String(), "/")+r.Path, nil); err != nil {
+		return "", nil, nil, "", false, fmt.Errorf("%w: Method and Path do not form a valid HTTP request", ErrConfig)
+	}
 	if r.Body != nil {
 		if body, err = readRequestBody(ctx, r.Body); err != nil {
 			return "", nil, nil, "", false, err
