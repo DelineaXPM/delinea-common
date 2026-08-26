@@ -12,6 +12,11 @@ fixture absence fail; the scheduled workflow uses this mode so missing
 repository secrets cannot turn a green run into an empty run. The strict suite
 requires every fixture listed below, including its dedicated attachment secrets.
 
+The scheduled/manual workflow runs the live suite serially on Ubuntu, macOS,
+and Windows. Overlapping workflow runs are queued, and the OS matrix permits
+only one runner at a time, so shared tenant fixtures are not exercised
+concurrently by this repository.
+
 The tests never print secret values: assertions compare lengths, status codes,
 or a configured SHA-256 digest. Point the fixtures at throwaway test objects,
 not production ones. In CI, set them as masked secret variables.
