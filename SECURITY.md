@@ -17,7 +17,8 @@ merely asserted:
   gains a `require` directive. It runs in the ordinary test suite, so it fires
   in `make test`, in the cross-platform CI `test` job, and under the `e2e`
   build tag.
-- CI additionally verifies that `go.mod` is tidy and that no `go.sum` exists.
+- CI additionally verifies downloaded module content, checks that `go.mod` is
+  tidy, and requires that no `go.sum` exists.
 
 Because there are no module dependencies, the Go toolchain and standard library
 are the module's entire third-party build and runtime dependency surface. CI
@@ -26,6 +27,7 @@ runs a version-pinned
 push to `main` (`.github/workflows/ci.yml`), scanning with the minimum Go
 version in `go.mod`. A reachable standard-library vulnerability therefore
 keeps CI red until that minimum is advanced to a fixed release.
+CI also runs `staticcheck` over Go code and `actionlint` over every workflow.
 
 ## Supported toolchain and the version floor
 

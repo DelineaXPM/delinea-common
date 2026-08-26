@@ -9,17 +9,19 @@ tests are built only with the e2e tag:
 By default, each live test skips when its fixtures are absent. Set
 DELINEA_COMMON_TEST_REQUIRE_E2E=1 (or run make e2e-strict) to make every required
 fixture absence fail; the scheduled workflow uses this mode so missing
-repository secrets cannot turn a green run into an empty run. The strict suite
+environment secrets cannot turn a green run into an empty run. The strict suite
 requires every fixture listed below, including its dedicated attachment secrets.
 
 The scheduled/manual workflow runs the live suite serially on Ubuntu, macOS,
-and Windows. Overlapping workflow runs are queued, and the OS matrix permits
-only one runner at a time, so shared tenant fixtures are not exercised
-concurrently by this repository.
+and Windows. Its credentials are environment secrets in the live-tests
+environment, which accepts only main. A manual run against another branch
+therefore cannot receive live credentials. Overlapping workflow runs are
+queued, and the OS matrix permits only one runner at a time, so shared tenant
+fixtures are not exercised concurrently by this repository.
 
 The tests never print secret values: assertions compare lengths, status codes,
 or a configured SHA-256 digest. Point the fixtures at throwaway test objects,
-not production ones. In CI, set them as masked secret variables.
+not production ones. In CI, store them as live-tests environment secrets.
 
 The live tests span both server-facing packages:
   - api/e2e_test.go              the token engine and raw REST calls
