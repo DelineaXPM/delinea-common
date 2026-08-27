@@ -46,7 +46,10 @@ it within one week of a high- or critical-severity standard-library advisory.
 ## Release provenance
 
 delinea-common is distributed as tagged Go module source, not as a prebuilt
-artifact. Standard Go module resolution verifies public module content through
-the Go checksum database; consumers should pin reviewed versions and retain the
-resulting `go.sum` entries. The project does not currently publish a separate
-SBOM, signature, or provenance attestation for module tags.
+artifact. Stable tags are created only after the full CI and live E2E gates
+pass and are immutable after publication. GitHub releases contain notes and
+GitHub's automatic source snapshots only. Standard Go module resolution
+verifies public module content through the Go checksum database; consumers
+should pin reviewed versions and retain the resulting `go.sum` entries. The
+project does not currently publish a separate SBOM, signature, or provenance
+attestation for module tags. See `RELEASING.md` for the maintainer procedure.

@@ -115,6 +115,7 @@ and use the formatters in `secrets/ciout` when a CI wire format is required.
 The precise retry, timeout, authentication-recovery, and upstream API contracts
 are recorded in [docs/api-contracts.md](docs/api-contracts.md). Live test
 fixtures and strict-mode operation are documented in [docs/E2E.txt](docs/E2E.txt).
+The maintainer release procedure is documented in [RELEASING.md](RELEASING.md).
 
 The `delinea-util` command that consumes these packages is maintained in
 [`DelineaXPM/delinea-tools`](https://github.com/DelineaXPM/delinea-tools).
